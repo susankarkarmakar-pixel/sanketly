@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { authRouter } from './routes/auth';
+import { prekeysRouter } from './routes/prekeys';
 import { setupSocket } from './socket';
 
 const app = express();
@@ -14,6 +15,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/', authRouter);
+app.use('/', prekeysRouter);
 
 // Setup Socket.io
 setupSocket(server);

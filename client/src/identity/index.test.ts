@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getOrCreateIdentity, signChallenge, Identity } from './index';
+import { getOrCreateIdentity, signChallenge } from './index';
 import nacl from 'tweetnacl';
 import naclUtil from 'tweetnacl-util';
 

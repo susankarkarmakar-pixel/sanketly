@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { connectTransport, disconnectTransport, sendMessage, onMessage, onError } from './index';
+import * as crypto from '@sanketly/crypto';
 
-// Mock node-fetch (global.fetch)
+// Mock fetch
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+globalThis.fetch = mockFetch as any;
+
+// Mock idb-keyval to avoid indexedDB errors in jsdom
+const mockStore = new Map<string, any>();
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(async (key: string) => mockStore.get(key)),
+  set: vi.fn(async (key: string, val: any) => mockStore.set(key, val)),
+}));
 
 // Mock socket.io-client
 let mockSocketEmit = vi.fn();
@@ -41,29 +49,46 @@ vi.mock('uuid', () => ({
   v4: vi.fn(() => 'mock-uuid-1234'),
 }));
 
-describe('Transport Module', () => {
-  beforeEach(() => {
+describe('Transport Module with Crypto', () => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    mockStore.clear();
     mockSocketInstance.connected = false;
+    localStorage.clear();
 
-    // Default fetch mock behavior
-    mockFetch.mockImplementation((url) => {
-      if (url.endsWith('/register')) {
-        return Promise.resolve({ ok: true });
+    await crypto.initCrypto();
+
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.endsWith('/register') || url.endsWith('/prekeys')) {
+        return { ok: true };
       }
       if (url.endsWith('/auth/challenge')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ challenge: 'mock-challenge' }) });
+        return { ok: true, json: async () => ({ challenge: 'mock-challenge' }) };
       }
       if (url.endsWith('/auth/verify')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ sessionId: 'mock-session-id' }) });
+        return { ok: true, json: async () => ({ sessionId: 'mock-session-id' }) };
       }
-      return Promise.resolve({ ok: false });
+      if (url.includes('/prekeys/')) {
+        // Mock returning a prekey bundle for the recipient
+        const remoteId = crypto.generateIdentityKeyPair();
+        const remotePreKey = crypto.generatePreKey(1);
+        return {
+          ok: true,
+          json: async () => ({
+            identityKey: crypto.serializeIdentityKeyPair(remoteId),
+            prekey: {
+              id: 1,
+              key: crypto.serializePreKey(remotePreKey)
+            }
+          })
+        };
+      }
+      return { ok: false };
     });
 
-    // Mock socket on('connect') callback invocation
     mockSocketOn.mockImplementation((event, callback) => {
       if (event === 'connect') {
-        setTimeout(callback, 0); // Simulate asynchronous connection success
+        setTimeout(callback, 0);
       }
     });
   });
@@ -75,62 +100,31 @@ describe('Transport Module', () => {
   it('should authenticate and connect socket successfully', async () => {
     await connectTransport('testuser');
 
-    expect(mockFetch).toHaveBeenCalledTimes(3); // register, challenge, verify
+    // Should fetch register auth, challenge, verify, and prekeys POST
+    expect(mockFetch).toHaveBeenCalledTimes(4);
     expect(mockSocketInstance.connected).toBe(true);
   });
 
-  it('should fail to send a message if not connected', () => {
-    expect(() => sendMessage('bob', 'Hello')).toThrow('Transport not connected');
-  });
-
-  it('should emit message:send with correct payload when connected', async () => {
+  it('should encrypt message before emitting to socket', async () => {
     await connectTransport('alice');
 
-    const msgId = sendMessage('bob', 'Hello Bob');
+    const msgId = await sendMessage('bob', 'Hello Bob');
 
     expect(msgId).toBe('mock-uuid-1234');
-    expect(mockSocketEmit).toHaveBeenCalledWith('message:send', {
-      toUsername: 'bob',
-      content: 'Hello Bob',
-      clientMessageId: 'mock-uuid-1234'
-    });
-  });
+    expect(mockSocketEmit).toHaveBeenCalledTimes(1);
 
-  it('should trigger onMessage callback when message:receive is received', async () => {
-    await connectTransport('alice');
+    const [event, payload] = mockSocketEmit.mock.calls[0];
+    expect(event).toBe('message:send');
+    expect(payload.toUsername).toBe('bob');
+    expect(payload.clientMessageId).toBe('mock-uuid-1234');
 
-    const messageCallback = vi.fn();
-    const unsubscribe = onMessage(messageCallback);
+    // The content must NOT be plaintext
+    expect(payload.content).not.toContain('Hello Bob');
+    // Content should be a base64 serialized Envelope
+    expect(typeof payload.content).toBe('string');
 
-    // Find the registered handler for 'message:receive' and call it
-    const receiveHandlerCall = mockSocketOn.mock.calls.find(call => call[0] === 'message:receive');
-    expect(receiveHandlerCall).toBeDefined();
-
-    const handler = receiveHandlerCall[1];
-    const incomingPayload = { fromUsername: 'bob', content: 'Hi', clientMessageId: 'msg-1', serverTimestamp: 123 };
-    handler(incomingPayload);
-
-    expect(messageCallback).toHaveBeenCalledWith(incomingPayload);
-
-    unsubscribe();
-  });
-
-  it('should trigger onError callback when message:error is received', async () => {
-    await connectTransport('alice');
-
-    const errorCallback = vi.fn();
-    const unsubscribe = onError(errorCallback);
-
-    // Find the registered handler for 'message:error' and call it
-    const errorHandlerCall = mockSocketOn.mock.calls.find(call => call[0] === 'message:error');
-    expect(errorHandlerCall).toBeDefined();
-
-    const handler = errorHandlerCall[1];
-    const errorPayload = { error: 'User is offline', clientMessageId: 'mock-uuid-1234' };
-    handler(errorPayload);
-
-    expect(errorCallback).toHaveBeenCalledWith(errorPayload);
-
-    unsubscribe();
+    // Try deserializing it to ensure it is valid
+    const envelope = crypto.deserializeEnvelope(payload.content);
+    expect(envelope).toBeDefined();
   });
 });

@@ -1,9 +1,12 @@
 import { io, Socket } from 'socket.io-client';
 import { getOrCreateIdentity, signChallenge } from '../identity';
+import * as crypto from '@sanketly/crypto';
 import { v4 as uuidv4 } from 'uuid';
 
 let socket: Socket | null = null;
-let currentSessionId: string | null = null;
+
+let localUsername: string | null = null;
+let localIdentity: any = null; // proteus identity key pair
 
 export type MessageCallback = (message: { fromUsername: string; content: string; clientMessageId: string; serverTimestamp: number }) => void;
 export type ErrorCallback = (error: { error: string; clientMessageId: string }) => void;
@@ -11,8 +14,6 @@ export type ErrorCallback = (error: { error: string; clientMessageId: string }) 
 const messageListeners: MessageCallback[] = [];
 const errorListeners: ErrorCallback[] = [];
 
-// For the sake of this mock/demo, hardcode the server URL
-// In reality, this would come from an environment variable.
 const SERVER_URL = 'http://localhost:4000';
 
 export async function connectTransport(username: string) {
@@ -20,7 +21,44 @@ export async function connectTransport(username: string) {
     return;
   }
 
-  const identity = await getOrCreateIdentity();
+  localUsername = username;
+
+  await crypto.initCrypto();
+
+  // Note: we can use the identity generated in Phase 1 for signing/auth,
+  // but Proteus requires its own specific IdentityKeyPair format.
+  // For now, let's generate a Proteus Identity for E2E separately or assume `getOrCreateIdentity` handles it.
+  // Actually, since the prompt says "layered on top of existing identity", we should probably
+  // just generate the Proteus keys and register them to the prekey server, independent of the auth key.
+
+  const authIdentity = await getOrCreateIdentity();
+
+  // Check if we have a Proteus identity stored yet.
+  let proteusIdentityJson = localStorage.getItem(`proteus_identity_${username}`);
+  if (!proteusIdentityJson) {
+    localIdentity = crypto.generateIdentityKeyPair();
+    localStorage.setItem(`proteus_identity_${username}`, crypto.serializeIdentityKeyPair(localIdentity));
+
+    // Also generate prekeys and upload them
+    const prekeys = [];
+    for (let i = 1; i <= 10; i++) {
+        const pk = crypto.generatePreKey(i);
+        prekeys.push({ id: i, key: crypto.serializePreKey(pk) });
+        localStorage.setItem(`proteus_prekey_${username}_${i}`, crypto.serializePreKey(pk));
+    }
+
+    await fetch(`${SERVER_URL}/prekeys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username,
+            identityKey: crypto.serializeIdentityKeyPair(localIdentity),
+            prekeys
+        })
+    });
+  } else {
+    localIdentity = crypto.deserializeIdentityKeyPair(proteusIdentityJson);
+  }
 
   // 1. Try to register (fail gracefully if already exists)
   try {
@@ -29,14 +67,11 @@ export async function connectTransport(username: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         username,
-        ed25519PublicKey: identity.ed25519.publicKey,
-        x25519PublicKey: identity.x25519.publicKey,
+        ed25519PublicKey: authIdentity.ed25519.publicKey,
+        x25519PublicKey: authIdentity.x25519.publicKey,
       })
     });
-  } catch (e) {
-    // Ignore network errors here for simplicity,
-    // or handle conflict if user already registered.
-  }
+  } catch (e) {}
 
   // 2. Get challenge
   const challengeRes = await fetch(`${SERVER_URL}/auth/challenge`, {
@@ -45,9 +80,7 @@ export async function connectTransport(username: string) {
     body: JSON.stringify({ username })
   });
 
-  if (!challengeRes.ok) {
-    throw new Error('Failed to get challenge');
-  }
+  if (!challengeRes.ok) throw new Error('Failed to get challenge');
   const { challenge } = await challengeRes.json();
 
   // 3. Sign challenge
@@ -60,20 +93,52 @@ export async function connectTransport(username: string) {
     body: JSON.stringify({ username, challenge, signature })
   });
 
-  if (!verifyRes.ok) {
-    throw new Error('Failed to verify challenge');
-  }
+  if (!verifyRes.ok) throw new Error('Failed to verify challenge');
 
   const { sessionId } = await verifyRes.json();
-  currentSessionId = sessionId;
+
 
   // 5. Connect Socket
   socket = io(SERVER_URL, {
     auth: { sessionId }
   });
 
-  socket.on('message:receive', (data) => {
-    messageListeners.forEach(cb => cb(data));
+  socket.on('message:receive', async (data) => {
+    // data.content is an Envelope ciphertext now. We must decrypt it.
+    try {
+        let session = await crypto.loadSession(data.fromUsername, localIdentity);
+
+        let envelope = crypto.deserializeEnvelope(data.content);
+
+        let plaintext: string;
+        if (!session) {
+            // First message, it's a PreKey message.
+            // We need our prekey to decrypt. It's stored in localStorage in this simplified setup.
+            // (Assuming it was a PreKey message and it used one of our prekeys)
+            // The crypto package expects an array of prekeys in initSessionAsReceiver
+            const prekeys = [];
+            for (let i = 1; i <= 10; i++) {
+                const pkJson = localStorage.getItem(`proteus_prekey_${localUsername}_${i}`);
+                if (pkJson) prekeys.push(crypto.deserializePreKey(pkJson));
+            }
+
+            const result = await crypto.initSessionAsReceiver(
+                data.fromUsername,
+                localIdentity,
+                prekeys,
+                envelope
+            );
+            session = result[0];
+            plaintext = new TextDecoder().decode(result[1]);
+        } else {
+            plaintext = await crypto.decryptMessage(data.fromUsername, session, envelope);
+        }
+
+        data.content = plaintext;
+        messageListeners.forEach(cb => cb(data));
+    } catch (e) {
+        console.error("Failed to decrypt message from", data.fromUsername, e);
+    }
   });
 
   socket.on('message:error', (data) => {
@@ -86,16 +151,38 @@ export async function connectTransport(username: string) {
   });
 }
 
-export function sendMessage(toUsername: string, content: string): string {
+export async function sendMessage(toUsername: string, plaintext: string): Promise<string> {
   if (!socket || !socket.connected) {
     throw new Error('Transport not connected');
   }
+
+  // E2E Encrypt the message
+  let session = await crypto.loadSession(toUsername, localIdentity);
+
+  if (!session) {
+      // Need to fetch prekey bundle from server
+      const res = await fetch(`${SERVER_URL}/prekeys/${toUsername}`);
+      if (!res.ok) throw new Error('Could not fetch prekeys for user');
+      const { identityKey, prekey } = await res.json();
+
+      const remoteIdentity = crypto.deserializeIdentityKeyPair(identityKey);
+      const remotePreKey = crypto.deserializePreKey(prekey.key);
+      const bundle = await crypto.constructPreKeyBundle(
+          remoteIdentity,
+          remotePreKey
+      );
+
+      session = await crypto.initSessionAsSender(toUsername, localIdentity, bundle);
+  }
+
+  const envelope = await crypto.encryptMessage(toUsername, session, plaintext);
+  const ciphertextBase64 = crypto.serializeEnvelope(envelope);
 
   const clientMessageId = uuidv4();
 
   socket.emit('message:send', {
     toUsername,
-    content,
+    content: ciphertextBase64,
     clientMessageId
   });
 
@@ -127,5 +214,7 @@ export function disconnectTransport() {
     socket.disconnect();
     socket = null;
   }
-  currentSessionId = null;
+
+  localUsername = null;
+  localIdentity = null;
 }

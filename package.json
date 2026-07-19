@@ -7,5 +7,9 @@
     "test": "pnpm -r run test",
     "build": "pnpm -r run build",
     "dev": "pnpm -r run dev"
+  },
+  "dependencies": {
+    "@wireapp/proteus": "^9.13.0",
+    "libsodium-wrappers-sumo": "^0.8.4"
   }
 }

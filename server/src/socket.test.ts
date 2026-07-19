@@ -7,7 +7,7 @@ import { sessions } from './state';
 import { v4 as uuidv4 } from 'uuid';
 
 describe('Socket Logic', () => {
-  let io: any, serverSocket: any, clientSocket1: ClientSocket, clientSocket2: ClientSocket;
+  let io: any, clientSocket1: ClientSocket, clientSocket2: ClientSocket;
   let port: number;
   let httpServer: any;
   const username1 = 'userA';
@@ -106,7 +106,6 @@ describe('Socket Logic', () => {
 
   it('should return error if recipient is offline', (done) => {
     clientSocket1 = Client(`http://localhost:${port}`, { auth: { sessionId: sessionId1 } });
-    // client2 is not connected
 
     clientSocket1.on('connect', () => {
       clientSocket1.emit('message:send', {
@@ -119,6 +118,34 @@ describe('Socket Logic', () => {
     clientSocket1.on('message:error', (data) => {
       expect(data.error).toBe('User is offline');
       expect(data.clientMessageId).toBe('msg-2');
+      done();
+    });
+  });
+
+  it('should successfully relay a ciphertext message without modification', (done) => {
+    clientSocket1 = Client(`http://localhost:${port}`, { auth: { sessionId: sessionId1 } });
+    clientSocket2 = Client(`http://localhost:${port}`, { auth: { sessionId: sessionId2 } });
+
+    let connectedCount = 0;
+    const onConnect = () => {
+      connectedCount++;
+      if (connectedCount === 2) {
+        // Send pseudo-ciphertext
+        clientSocket1.emit('message:send', {
+          toUsername: username2,
+          content: 'SOME_OPAQUE_CIPHERTEXT_BASE64==',
+          clientMessageId: 'msg-crypto'
+        });
+      }
+    };
+
+    clientSocket1.on('connect', onConnect);
+    clientSocket2.on('connect', onConnect);
+
+    clientSocket2.on('message:receive', (data: any) => {
+      expect(data.fromUsername).toBe(username1);
+      expect(data.content).toBe('SOME_OPAQUE_CIPHERTEXT_BASE64==');
+      expect(data.content).not.toBe('valid plaintext');
       done();
     });
   });
