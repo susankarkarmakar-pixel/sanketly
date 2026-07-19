@@ -2,8 +2,48 @@ import { Server, Socket } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { sessions } from './state';
 import { groupStore } from './routes/groups';
+import { redis } from './redis';
 
 const activeSockets = new Map<string, string>(); // username -> socketId
+
+// Default TTL: 7 days
+const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+async function queueMessage(username: string, payload: any, expiresInSeconds?: number) {
+  const ttl = expiresInSeconds ? Math.min(expiresInSeconds, DEFAULT_TTL_SECONDS) : DEFAULT_TTL_SECONDS;
+
+  const msgId = payload.clientMessageId;
+  const msgKey = `msg:${username}:${msgId}`;
+
+  // Store payload as string, using Redis's built-in expiry
+  await redis.setex(msgKey, ttl, JSON.stringify(payload));
+  // Keep order in list
+  await redis.rpush(`queue:${username}`, msgKey);
+}
+
+async function flushMessages(username: string, socket: Socket) {
+  const queueKey = `queue:${username}`;
+  const keys = await redis.lrange(queueKey, 0, -1);
+
+  if (keys.length === 0) return;
+
+  for (const key of keys) {
+    const raw = await redis.get(key);
+    if (raw) {
+      try {
+        const payload = JSON.parse(raw);
+        socket.emit('message:receive', payload);
+      } catch (e) {
+        console.error('Failed to parse queued message', key);
+      }
+      // Delete the individual message key as it's been delivered
+      await redis.del(key);
+    }
+  }
+
+  // Delete the queue list
+  await redis.del(queueKey);
+}
 
 export function setupSocket(server: HttpServer) {
   const io = new Server(server, {
@@ -38,8 +78,11 @@ export function setupSocket(server: HttpServer) {
 
     activeSockets.set(username, socket.id);
 
-    socket.on('message:send', (data) => {
-      const { toUsername, groupId, content, ciphertextsByMember, clientMessageId } = data;
+    // Flush queued messages upon connection
+    flushMessages(username, socket).catch(console.error);
+
+    socket.on('message:send', async (data) => {
+      const { toUsername, groupId, content, ciphertextsByMember, clientMessageId, expiresInSeconds } = data;
 
       if (!clientMessageId) {
         socket.emit('message:error', { error: 'Invalid message payload' });
@@ -65,15 +108,20 @@ export function setupSocket(server: HttpServer) {
              continue;
           }
 
+          const payload = {
+            fromUsername: username,
+            groupId: groupId,
+            content: memberCiphertext,
+            clientMessageId,
+            serverTimestamp: Date.now()
+          };
+
           const recipientSocketId = activeSockets.get(member);
           if (recipientSocketId) {
-            io.to(recipientSocketId).emit('message:receive', {
-              fromUsername: username,
-              groupId: groupId,
-              content: memberCiphertext,
-              clientMessageId,
-              serverTimestamp: Date.now()
-            });
+            io.to(recipientSocketId).emit('message:receive', payload);
+          } else {
+            // Recipient is offline, queue the message
+            await queueMessage(member, payload, expiresInSeconds);
           }
         }
         return;
@@ -85,20 +133,20 @@ export function setupSocket(server: HttpServer) {
         return;
       }
 
+      const payload = {
+        fromUsername: username,
+        content,
+        clientMessageId,
+        serverTimestamp: Date.now()
+      };
+
       const recipientSocketId = activeSockets.get(toUsername);
 
       if (recipientSocketId) {
-        io.to(recipientSocketId).emit('message:receive', {
-          fromUsername: username,
-          content,
-          clientMessageId,
-          serverTimestamp: Date.now()
-        });
+        io.to(recipientSocketId).emit('message:receive', payload);
       } else {
-        socket.emit('message:error', {
-          error: 'User is offline',
-          clientMessageId
-        });
+        // Recipient is offline, queue the message
+        await queueMessage(toUsername, payload, expiresInSeconds);
       }
     });
 

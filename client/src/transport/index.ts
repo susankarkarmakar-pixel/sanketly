@@ -160,7 +160,7 @@ async function ensureSession(toUsername: string) {
   return session;
 }
 
-export async function sendMessage(toUsername: string, plaintext: string): Promise<string> {
+export async function sendMessage(toUsername: string, plaintext: string, expiresInSeconds?: number): Promise<string> {
   if (!socket || !socket.connected) {
     throw new Error('Transport not connected');
   }
@@ -174,7 +174,8 @@ export async function sendMessage(toUsername: string, plaintext: string): Promis
   socket.emit('message:send', {
     toUsername,
     content: ciphertextBase64,
-    clientMessageId
+    clientMessageId,
+    expiresInSeconds
   });
 
   return clientMessageId;
@@ -201,7 +202,7 @@ export async function getGroup(groupId: string): Promise<{ name: string, members
     return await res.json();
 }
 
-export async function sendGroupMessage(groupId: string, plaintext: string): Promise<string> {
+export async function sendGroupMessage(groupId: string, plaintext: string, expiresInSeconds?: number): Promise<string> {
     if (!socket || !socket.connected) {
       throw new Error('Transport not connected');
     }
@@ -222,7 +223,8 @@ export async function sendGroupMessage(groupId: string, plaintext: string): Prom
     socket.emit('message:send', {
       groupId,
       ciphertextsByMember,
-      clientMessageId
+      clientMessageId,
+      expiresInSeconds
     });
 
     return clientMessageId;
