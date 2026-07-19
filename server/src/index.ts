@@ -1,7 +1,10 @@
 import express from 'express';
+import { createServer } from 'http';
 import { authRouter } from './routes/auth';
+import { setupSocket } from './socket';
 
 const app = express();
+const server = createServer(app);
 const port = process.env.PORT || 4000;
 
 app.use(express.json());
@@ -12,10 +15,13 @@ app.get('/health', (req, res) => {
 
 app.use('/', authRouter);
 
+// Setup Socket.io
+setupSocket(server);
+
 if (require.main === module) {
-  app.listen(port, () => {
+  server.listen(port, () => {
     console.log(`Server listening on port ${port}`);
   });
 }
 
-export default app;
+export default server;

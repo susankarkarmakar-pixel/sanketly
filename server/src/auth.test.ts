@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from './index';
+import server from './index';
 import nacl from 'tweetnacl';
 import naclUtil from 'tweetnacl-util';
 
@@ -20,7 +20,7 @@ describe('Auth Routes', () => {
   });
 
   it('should register a user successfully', async () => {
-    const res = await request(app).post('/register').send({
+    const res = await request(server).post('/register').send({
       username,
       ed25519PublicKey,
       x25519PublicKey,
@@ -31,7 +31,7 @@ describe('Auth Routes', () => {
   });
 
   it('should reject registering an existing user', async () => {
-    const res = await request(app).post('/register').send({
+    const res = await request(server).post('/register').send({
       username,
       ed25519PublicKey,
       x25519PublicKey,
@@ -42,7 +42,7 @@ describe('Auth Routes', () => {
   });
 
   it('should return a challenge for an existing user', async () => {
-    const res = await request(app).post('/auth/challenge').send({
+    const res = await request(server).post('/auth/challenge').send({
       username,
     });
 
@@ -53,7 +53,7 @@ describe('Auth Routes', () => {
 
   it('should successfully verify a correct signature and return a session token', async () => {
     // 1. Get a challenge
-    const challengeRes = await request(app).post('/auth/challenge').send({
+    const challengeRes = await request(server).post('/auth/challenge').send({
       username,
     });
     const challenge = challengeRes.body.challenge;
@@ -64,7 +64,7 @@ describe('Auth Routes', () => {
     const signature = naclUtil.encodeBase64(signatureUint8);
 
     // 3. Verify
-    const verifyRes = await request(app).post('/auth/verify').send({
+    const verifyRes = await request(server).post('/auth/verify').send({
       username,
       challenge,
       signature,
@@ -76,7 +76,7 @@ describe('Auth Routes', () => {
 
   it('should reject an incorrect signature', async () => {
     // 1. Get a challenge
-    const challengeRes = await request(app).post('/auth/challenge').send({
+    const challengeRes = await request(server).post('/auth/challenge').send({
       username,
     });
     const challenge = challengeRes.body.challenge;
@@ -88,7 +88,7 @@ describe('Auth Routes', () => {
     const signature = naclUtil.encodeBase64(signatureUint8);
 
     // 3. Verify (should fail)
-    const verifyRes = await request(app).post('/auth/verify').send({
+    const verifyRes = await request(server).post('/auth/verify').send({
       username,
       challenge,
       signature,

@@ -2,19 +2,9 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import nacl from 'tweetnacl';
 import naclUtil from 'tweetnacl-util';
+import { users, challenges, sessions } from '../state';
 
 export const authRouter = Router();
-
-interface User {
-  username: string;
-  ed25519PublicKey: string;
-  x25519PublicKey: string;
-}
-
-// In-memory stores
-const users = new Map<string, User>();
-const challenges = new Map<string, string>(); // username -> challenge
-const sessions = new Map<string, string>(); // sessionId -> username
 
 authRouter.post('/register', (req: Request, res: Response) => {
   const { username, ed25519PublicKey, x25519PublicKey } = req.body;
