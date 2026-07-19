@@ -1,9 +1,0 @@
---- client/src/transport/index.test.ts
-+++ client/src/transport/index.test.ts
-@@ -179,6 +179,7 @@
-   it('should encrypt group message separately for each member and send correctly', async () => {
-     await connectTransport('group_alice');
-     mockSocketEmit.mockClear();
-+    console.log('mockStore keys before sendGroupMessage:', Array.from(mockStore.keys()));
-
-     const msgId = await sendGroupMessage('mock-group-id', 'Hello Group!');
