@@ -8,7 +8,7 @@ let socket: Socket | null = null;
 let localUsername: string | null = null;
 let localIdentity: any = null; // proteus identity key pair
 
-export type MessageCallback = (message: { fromUsername: string; content: string; clientMessageId: string; serverTimestamp: number }) => void;
+export type MessageCallback = (message: { fromUsername: string; groupId?: string; content: string; clientMessageId: string; serverTimestamp: number }) => void;
 export type ErrorCallback = (error: { error: string; clientMessageId: string }) => void;
 
 const messageListeners: MessageCallback[] = [];
@@ -24,12 +24,6 @@ export async function connectTransport(username: string) {
   localUsername = username;
 
   await crypto.initCrypto();
-
-  // Note: we can use the identity generated in Phase 1 for signing/auth,
-  // but Proteus requires its own specific IdentityKeyPair format.
-  // For now, let's generate a Proteus Identity for E2E separately or assume `getOrCreateIdentity` handles it.
-  // Actually, since the prompt says "layered on top of existing identity", we should probably
-  // just generate the Proteus keys and register them to the prekey server, independent of the auth key.
 
   const authIdentity = await getOrCreateIdentity();
 
@@ -104,18 +98,13 @@ export async function connectTransport(username: string) {
   });
 
   socket.on('message:receive', async (data) => {
-    // data.content is an Envelope ciphertext now. We must decrypt it.
+    // Decrypt the ciphertext
     try {
         let session = await crypto.loadSession(data.fromUsername, localIdentity);
-
         let envelope = crypto.deserializeEnvelope(data.content);
 
         let plaintext: string;
         if (!session) {
-            // First message, it's a PreKey message.
-            // We need our prekey to decrypt. It's stored in localStorage in this simplified setup.
-            // (Assuming it was a PreKey message and it used one of our prekeys)
-            // The crypto package expects an array of prekeys in initSessionAsReceiver
             const prekeys = [];
             for (let i = 1; i <= 10; i++) {
                 const pkJson = localStorage.getItem(`proteus_prekey_${localUsername}_${i}`);
@@ -151,18 +140,12 @@ export async function connectTransport(username: string) {
   });
 }
 
-export async function sendMessage(toUsername: string, plaintext: string): Promise<string> {
-  if (!socket || !socket.connected) {
-    throw new Error('Transport not connected');
-  }
-
-  // E2E Encrypt the message
+// Ensure session exists or fetch it
+async function ensureSession(toUsername: string) {
   let session = await crypto.loadSession(toUsername, localIdentity);
-
   if (!session) {
-      // Need to fetch prekey bundle from server
       const res = await fetch(`${SERVER_URL}/prekeys/${toUsername}`);
-      if (!res.ok) throw new Error('Could not fetch prekeys for user');
+      if (!res.ok) throw new Error(`Could not fetch prekeys for user ${toUsername}`);
       const { identityKey, prekey } = await res.json();
 
       const remoteIdentity = crypto.deserializeIdentityKeyPair(identityKey);
@@ -174,7 +157,15 @@ export async function sendMessage(toUsername: string, plaintext: string): Promis
 
       session = await crypto.initSessionAsSender(toUsername, localIdentity, bundle);
   }
+  return session;
+}
 
+export async function sendMessage(toUsername: string, plaintext: string): Promise<string> {
+  if (!socket || !socket.connected) {
+    throw new Error('Transport not connected');
+  }
+
+  const session = await ensureSession(toUsername);
   const envelope = await crypto.encryptMessage(toUsername, session, plaintext);
   const ciphertextBase64 = crypto.serializeEnvelope(envelope);
 
@@ -187,6 +178,54 @@ export async function sendMessage(toUsername: string, plaintext: string): Promis
   });
 
   return clientMessageId;
+}
+
+// Group specific methods
+
+export async function createGroup(name: string, members: string[]): Promise<string> {
+    const res = await fetch(`${SERVER_URL}/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, members, username: localUsername })
+    });
+
+    if (!res.ok) throw new Error('Failed to create group');
+
+    const { groupId } = await res.json();
+    return groupId;
+}
+
+export async function getGroup(groupId: string): Promise<{ name: string, members: string[] }> {
+    const res = await fetch(`${SERVER_URL}/groups/${groupId}`);
+    if (!res.ok) throw new Error('Failed to get group');
+    return await res.json();
+}
+
+export async function sendGroupMessage(groupId: string, plaintext: string): Promise<string> {
+    if (!socket || !socket.connected) {
+      throw new Error('Transport not connected');
+    }
+
+    const group = await getGroup(groupId);
+    const ciphertextsByMember: Record<string, string> = {};
+
+    for (const member of group.members) {
+        if (member === localUsername) continue;
+
+        const session = await ensureSession(member);
+        const envelope = await crypto.encryptMessage(member, session, plaintext);
+        ciphertextsByMember[member] = crypto.serializeEnvelope(envelope);
+    }
+
+    const clientMessageId = uuidv4();
+
+    socket.emit('message:send', {
+      groupId,
+      ciphertextsByMember,
+      clientMessageId
+    });
+
+    return clientMessageId;
 }
 
 export function onMessage(callback: MessageCallback) {

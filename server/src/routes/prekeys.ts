@@ -7,7 +7,6 @@ interface UserPrekeys {
   prekeys: { id: number; key: string }[];
 }
 
-// In-memory store for prekeys
 const prekeyStore = new Map<string, UserPrekeys>();
 
 prekeysRouter.post('/prekeys', (req: Request, res: Response) => {
@@ -17,14 +16,13 @@ prekeysRouter.post('/prekeys', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Missing or invalid required fields' });
   }
 
-  // Overwrite existing or create new
-  prekeyStore.set(username, { identityKey, prekeys });
+  prekeyStore.set(username as string, { identityKey, prekeys });
   res.status(201).json({ message: 'Prekeys uploaded successfully' });
 });
 
 prekeysRouter.get('/prekeys/:username', (req: Request, res: Response) => {
-  const { username } = req.params;
-  const store = prekeyStore.get(username as string);
+  const username = req.params.username as string;
+  const store = prekeyStore.get(username);
 
   if (!store) {
     return res.status(404).json({ error: 'User prekeys not found' });
@@ -34,7 +32,6 @@ prekeysRouter.get('/prekeys/:username', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'No prekeys left for user' });
   }
 
-  // Pop a prekey
   const prekey = store.prekeys.shift();
 
   res.status(200).json({

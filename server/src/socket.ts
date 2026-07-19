@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { sessions } from './state';
+import { groupStore } from './routes/groups';
 
 const activeSockets = new Map<string, string>(); // username -> socketId
 
@@ -12,7 +13,6 @@ export function setupSocket(server: HttpServer) {
     }
   });
 
-  // Authentication middleware
   io.use((socket, next) => {
     const sessionId = socket.handshake.auth.sessionId;
     if (!sessionId) {
@@ -24,7 +24,6 @@ export function setupSocket(server: HttpServer) {
       return next(new Error('Authentication error: Invalid sessionId'));
     }
 
-    // Attach username to socket for later use
     (socket as any).username = username;
     next();
   });
@@ -32,9 +31,6 @@ export function setupSocket(server: HttpServer) {
   io.on('connection', (socket: Socket) => {
     const username = (socket as any).username;
 
-    // Disconnect if auth isn't complete (though our middleware handles it,
-    // it's good practice to enforce timeout if doing manual auth post-connection,
-    // but here we enforce it pre-connection via io.use. We'll add a safety check.)
     if (!username) {
        socket.disconnect(true);
        return;
@@ -43,9 +39,48 @@ export function setupSocket(server: HttpServer) {
     activeSockets.set(username, socket.id);
 
     socket.on('message:send', (data) => {
-      const { toUsername, content, clientMessageId } = data;
+      const { toUsername, groupId, content, ciphertextsByMember, clientMessageId } = data;
 
-      if (!toUsername || !content || !clientMessageId) {
+      if (!clientMessageId) {
+        socket.emit('message:error', { error: 'Invalid message payload' });
+        return;
+      }
+
+      // Group Messaging Logic
+      if (groupId && ciphertextsByMember) {
+        const group = groupStore.get(groupId);
+        if (!group) {
+          socket.emit('message:error', { error: 'Group not found', clientMessageId });
+          return;
+        }
+
+        // Fan out message to each member
+        for (const member of group.members) {
+          // Don't echo to sender
+          if (member === username) continue;
+
+          const memberCiphertext = ciphertextsByMember[member];
+          if (!memberCiphertext) {
+             // Missing ciphertext for a member - skip or error? We'll just skip here
+             continue;
+          }
+
+          const recipientSocketId = activeSockets.get(member);
+          if (recipientSocketId) {
+            io.to(recipientSocketId).emit('message:receive', {
+              fromUsername: username,
+              groupId: groupId,
+              content: memberCiphertext,
+              clientMessageId,
+              serverTimestamp: Date.now()
+            });
+          }
+        }
+        return;
+      }
+
+      // 1:1 Messaging Logic
+      if (!toUsername || !content) {
         socket.emit('message:error', { error: 'Invalid message payload', clientMessageId });
         return;
       }

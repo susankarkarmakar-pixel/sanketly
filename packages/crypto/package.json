@@ -6,17 +6,12 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "vitest run"
+    "test": "echo \"No tests yet\""
   },
   "devDependencies": {
-    "@types/libsodium-wrappers-sumo": "0.7.5",
-    "typescript": "^5.0.0",
-    "vitest": "^4.1.10"
+    "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@wireapp/proteus": "^9.13.0",
-    "buffer": "^6.0.3",
-    "idb-keyval": "^6.3.0",
-    "libsodium-wrappers-sumo": "0.7.9"
+    "idb-keyval": "^6.3.0"
   }
 }

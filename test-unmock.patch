@@ -1,0 +1,39 @@
+--- client/src/transport/index.test.ts
++++ client/src/transport/index.test.ts
+@@ -8,13 +8,6 @@
+ const mockFetch = vi.fn();
+ globalThis.fetch = mockFetch as any;
+
+-// Mock idb-keyval to avoid indexedDB errors in jsdom
+-const mockStore = new Map<string, any>();
+-vi.mock('idb-keyval', () => ({
+-  get: vi.fn(async (key: string) => mockStore.get(key)),
+-  set: vi.fn(async (key: string, val: any) => mockStore.set(key, val)),
+-  clear: vi.fn(async () => mockStore.clear()),
+-}));
+
+ // Mock socket.io-client
+ let mockSocketEmit = vi.fn();
+@@ -55,7 +48,6 @@
+   beforeEach(async () => {
+     vi.clearAllMocks();
+     await clearIdb();
+-    mockStore.clear();
+     mockSocketInstance.connected = false;
+     localStorage.clear();
+
+@@ -128,7 +120,6 @@
+   beforeEach(async () => {
+     vi.clearAllMocks();
+     await clearIdb();
+-    mockStore.clear();
+     mockSocketInstance.connected = false;
+     localStorage.clear();
+
+@@ -178,7 +169,6 @@
+   it('should encrypt group message separately for each member and send correctly', async () => {
+     await connectTransport('group_alice');
+     mockSocketEmit.mockClear();
+-    console.log('mockStore keys before sendGroupMessage:', Array.from(mockStore.keys()));
+
+     const msgId = await sendGroupMessage('mock-group-id', 'Hello Group!');
