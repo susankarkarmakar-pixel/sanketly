@@ -1,0 +1,11 @@
+{
+  "name": "sanketly",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A privacy-first, end-to-end encrypted messaging app",
+  "scripts": {
+    "test": "pnpm -r run test",
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r run dev"
+  }
+}
