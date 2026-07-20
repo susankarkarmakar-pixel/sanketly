@@ -6,4 +6,4 @@ A privacy-first, end-to-end encrypted messaging app. Currently implemented: pass
 
 ## Build Approach
 
-Solo dev + Google Jules (async AI coding agent), developed on GitHub.
+Solo dev + Google, developed on GitHub.
