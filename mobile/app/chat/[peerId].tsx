@@ -29,15 +29,15 @@ export default function ChatScreen() {
             <Text style={styles.backText}>‹</Text>
           </Pressable>
           <View style={styles.headerCopy}>
-            <Text style={styles.headerTitle}>Development peer</Text>
+            <Text style={styles.headerTitle}>SSA test channel</Text>
             <Text style={styles.headerMeta}>{peerId ?? "unknown"} · {meshStatus.state}</Text>
           </View>
           <View style={styles.headerBadge}><Text style={styles.headerBadgeText}>E2E</Text></View>
         </View>
 
         <View style={styles.notice}>
-          <Text style={styles.noticeTitle}>Protocol outbox enabled</Text>
-          <Text style={styles.noticeBody}>Messages are sealed with libsodium before they enter the durable outbox. Delivery remains queued until an authenticated peer transport is available.</Text>
+          <Text style={styles.noticeTitle}>SSA alert outbox enabled</Text>
+          <Text style={styles.noticeBody}>SSA messages are sealed before they enter the durable outbox. Delivery remains queued until an authenticated nearby transport is available.</Text>
         </View>
 
         <FlatList

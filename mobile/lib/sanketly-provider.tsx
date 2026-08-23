@@ -48,7 +48,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     void loadMeshIdentity().then(setIdentity).catch((error: unknown) => {
-      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to create secure identity" });
+      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to create secure SSA identity" });
     });
     const unsubscribe = MeshNative.subscribe((event) => {
       if (event.type === "status") {
@@ -83,7 +83,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
       const decrypted = await decryptMeshPacket({ identity: currentIdentity, packet });
       handleDecryptedMessage(decrypted);
     } catch (error) {
-      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Rejected invalid BLE frame" });
+      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Rejected invalid SSA transport frame" });
     }
   }
 
@@ -133,7 +133,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
       setMeshStatus({ kind: "mesh", state: "error", detail: "Secure identity is still loading" });
       return;
     }
-    setMeshStatus({ kind: "mesh", state: "starting", detail: "Starting nearby discovery…" });
+    setMeshStatus({ kind: "mesh", state: "starting", detail: "Starting SSA nearby discovery…" });
     try {
       if (Platform.OS === "android" && Platform.Version >= 31) {
         const permissions = await PermissionsAndroid.requestMultiple([
@@ -158,12 +158,12 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
       });
       await MeshNative.start(Array.from(encodePacket(announce)));
       if (!MeshNative.isAvailable) {
-        setMeshStatus({ kind: "mesh", state: "error", detail: "Native mesh module is not installed. Build the mobile app with the Sanketly native module." });
+        setMeshStatus({ kind: "mesh", state: "error", detail: "SSA native transport is not installed. Build the Android app with the SSA native module." });
       } else {
-        setMeshStatus({ kind: "mesh", state: "ready", detail: "Nearby discovery is active" });
+        setMeshStatus({ kind: "mesh", state: "ready", detail: "SSA nearby discovery is active" });
       }
     } catch (error) {
-      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to start mesh" });
+      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to start SSA nearby transport" });
     }
   }, [identity]);
 

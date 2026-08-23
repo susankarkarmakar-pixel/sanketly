@@ -19,17 +19,17 @@ export default function HomeScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>SANKETLY / PRIVATE MESH</Text>
-            <Text style={styles.title}>Your conversations</Text>
+            <Text style={styles.eyebrow}>SSA / OFFLINE ALERT NETWORK</Text>
+            <Text style={styles.title}>Sanket Setu Alert</Text>
           </View>
           <View style={[styles.statusDot, meshActive ? styles.statusDotActive : styles.statusDotIdle]} />
         </View>
 
         <View style={styles.heroCard}>
-          <Text style={styles.heroKicker}>OFFLINE-FIRST COMMUNICATION</Text>
+          <Text style={styles.heroKicker}>JOKHON SHOB BONDHO, SETU KHOLA THAKE</Text>
           <Text style={styles.heroTitle}>Messages that find a way.</Text>
           <Text style={styles.heroBody}>
-            Sanketly will prefer nearby encrypted delivery, then keep a message queued until a trusted transport is available.
+            SSA sends emergency alerts through nearby phones first, then keeps them queued until a connected bridge is available.
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -50,14 +50,14 @@ export default function HomeScreen() {
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No nearby peers yet</Text>
             <Text style={styles.emptyBody}>
-              Start discovery on two phones. The native BLE module will surface peers here after the mobile development build is installed.
+              Install the SSA development build on two Android phones, enable Nearby permissions, and start discovery on both phones.
             </Text>
             <Pressable
               accessibilityRole="button"
               onPress={() => router.push({ pathname: "/chat/[peerId]", params: { peerId: "development-peer" } })}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             >
-              <Text style={styles.secondaryButtonText}>Open development conversation</Text>
+              <Text style={styles.secondaryButtonText}>Open test conversation</Text>
             </Pressable>
           </View>
         ) : (
