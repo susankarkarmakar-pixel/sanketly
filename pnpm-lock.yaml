@@ -105,6 +105,9 @@ importers:
       '@sanketly/mesh-native':
         specifier: file:./modules/sanketly-mesh
         version: file:mobile/modules/sanketly-mesh(expo@54.0.37)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)
+      '@sanketly/nearby-native':
+        specifier: file:./modules/ssa-nearby
+        version: file:mobile/modules/ssa-nearby(expo@54.0.37)
       '@sanketly/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
@@ -1728,6 +1731,11 @@ packages:
       expo: '*'
       react: '*'
       react-native: '*'
+
+  '@sanketly/nearby-native@file:mobile/modules/ssa-nearby':
+    resolution: {directory: mobile/modules/ssa-nearby, type: directory}
+    peerDependencies:
+      expo: '*'
 
   '@sinclair/typebox@0.27.12':
     resolution: {integrity: sha512-hhyNJ+nbR6ZR7pToHvllEFun9TL0sbL+tk/ON75lo+Xas054uez98qRbsuNt7MBCyZKK4+8Yli/OAGZhmfBZ/g==}
@@ -6913,6 +6921,10 @@ snapshots:
       expo: 54.0.37(@babel/core@7.29.7(supports-color@8.1.1))(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)(typescript@5.9.3)
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1)
+
+  '@sanketly/nearby-native@file:mobile/modules/ssa-nearby(expo@54.0.37)':
+    dependencies:
+      expo: 54.0.37(@babel/core@7.29.7(supports-color@8.1.1))(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)(typescript@5.9.3)
 
   '@sinclair/typebox@0.27.12': {}
 

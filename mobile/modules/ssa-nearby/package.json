@@ -1,0 +1,10 @@
+{
+  "name": "@sanketly/nearby-native",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "files": ["src", "android", "expo-module.config.json", "README.md"],
+  "peerDependencies": {
+    "expo": "*"
+  }
+}

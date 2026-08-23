@@ -190,3 +190,15 @@ The immediate implementation order is: first apply the visible SSA branding; sec
 [2]: https://developers.google.com/nearby/connections/android/get-started "Google Developers — Nearby Connections for Android: Get started"
 
 [3]: https://developer.android.com/blog/posts/upcoming-changes-to-the-nearby-connections-api "Android Developers Blog — Upcoming Changes to the Nearby Connections API"
+
+## 12. Phase 1 implementation checkpoint
+
+Phase 1 implementation has started in the repository. The current checkpoint adds an Android-only `@sanketly/nearby-native` Expo module backed by Google Play Services Nearby Connections and `Strategy.P2P_CLUSTER`. It exposes advertising, discovery, connection approval/rejection, byte payload sending, payload receipt, permission checks and user-visible radio-state errors. The existing mobile provider now routes Android through Nearby, sends the authenticated SSA announce packet after connection, verifies peer identity, and routes encrypted packets through the connected Nearby endpoint.
+
+This checkpoint is **not yet a physical-device acceptance result**. The next required action is to generate an Android development build and test two real phones with internet connectivity disabled but Bluetooth and Wi-Fi radios enabled. Native Kotlin compilation and radio behavior remain release gates.
+
+## 13. Current implementation handoff
+
+The Android Phase 1 skeleton is now being implemented through a local Expo native module named `@sanketly/nearby-native`. It uses Google Play Services Nearby Connections with the `P2P_CLUSTER` strategy and exposes discovery, advertising, connection approval, byte payload send/receive, permission checks and disabled-radio recovery. The existing provider routes Android through this module and keeps the earlier raw-BLE transport as a separate fallback.
+
+Before Phase 2 work begins, the team must create an Android development build and complete the physical two-device test. The sandbox can validate TypeScript, protocol tests, Expo metadata and repository builds, but it has no Android SDK, Gradle installation or attached physical device, so native compilation and radio performance remain explicit acceptance gates.

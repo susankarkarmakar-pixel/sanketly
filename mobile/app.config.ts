@@ -24,6 +24,7 @@ const config: ExpoConfig = {
       "BLUETOOTH_CONNECT",
       "NEARBY_WIFI_DEVICES",
       "ACCESS_FINE_LOCATION",
+      "ACCESS_COARSE_LOCATION",
       "ACCESS_WIFI_STATE",
       "CHANGE_WIFI_STATE",
       "POST_NOTIFICATIONS",

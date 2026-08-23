@@ -2,6 +2,7 @@ export const PROTOCOL_VERSION = 1;
 export const FRAME_MAGIC = new Uint8Array([0x53, 0x4b]);
 export const DEFAULT_HOP_LIMIT = 3;
 export const MAX_PACKET_BYTES = 4096;
+export const NEARBY_SERVICE_ID = "in.sanketsetu.alert.nearby.v1";
 
 /** BLE identifiers are fixed across iOS and Android for cross-platform discovery. */
 export const BLE_SERVICE_UUID = "9E1A0001-6C1B-4D0B-9B0A-53414E4B4554";
@@ -128,7 +129,7 @@ export interface MeshPeer {
   lastSeenAt: number;
   verified: boolean;
   connectionState: "discovered" | "connecting" | "connected" | "unavailable";
-  transport: "ble" | "internet";
+  transport: "ble" | "nearby" | "internet";
 }
 
 export interface TransportStatus {

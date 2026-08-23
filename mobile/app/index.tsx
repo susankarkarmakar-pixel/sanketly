@@ -5,13 +5,22 @@ import { useSanketly } from "@/lib/sanketly-provider";
 
 function statusLabel(state: string): string {
   if (state === "ready") return "Nearby discovery active";
-  if (state === "starting") return "Starting nearby discovery…";
-  if (state === "error") return "Mesh needs native build";
-  return "Mesh is offline";
+  if (state === "starting") return "Waiting for nearby approval…";
+  if (state === "error") return "Nearby transport needs attention";
+  return "SSA is offline";
 }
 
 export default function HomeScreen() {
-  const { peerId, meshStatus, peers, startMesh, stopMesh } = useSanketly();
+  const {
+    peerId,
+    meshStatus,
+    peers,
+    pendingNearbyRequests,
+    startMesh,
+    stopMesh,
+    acceptNearbyRequest,
+    rejectNearbyRequest,
+  } = useSanketly();
   const meshActive = meshStatus.state === "ready" || meshStatus.state === "starting";
 
   return (
@@ -40,6 +49,34 @@ export default function HomeScreen() {
           </Pressable>
           <Text style={styles.statusText}>{statusLabel(meshStatus.state)}{meshStatus.detail ? ` · ${meshStatus.detail}` : ""}</Text>
         </View>
+
+        {pendingNearbyRequests.length > 0 && (
+          <View style={styles.requestCard}>
+            <Text style={styles.requestTitle}>Nearby phone wants to connect</Text>
+            <Text style={styles.requestBody}>Accept only when the phone is physically nearby and belongs to your SSA pilot group.</Text>
+            {pendingNearbyRequests.map((request) => (
+              <View key={request.endpointId} style={styles.requestRow}>
+                <Text style={styles.requestName}>{request.name || "SSA device"}</Text>
+                <View style={styles.requestActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => void rejectNearbyRequest(request.endpointId)}
+                    style={({ pressed }) => [styles.rejectButton, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.rejectButtonText}>Reject</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => void acceptNearbyRequest(request.endpointId)}
+                    style={({ pressed }) => [styles.acceptButton, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.acceptButtonText}>Accept</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Nearby peers</Text>
@@ -70,7 +107,7 @@ export default function HomeScreen() {
               <View style={styles.peerAvatar}><Text style={styles.peerAvatarText}>{(peer.displayName ?? "P").slice(0, 1).toUpperCase()}</Text></View>
               <View style={styles.peerCopy}>
                 <Text style={styles.peerName}>{peer.displayName ?? "Nearby peer"}</Text>
-                <Text style={styles.peerMeta}>{peer.connectionState} · {peer.verified ? "verified" : "not verified"}</Text>
+                <Text style={styles.peerMeta}>{peer.connectionState} · {peer.verified ? "verified" : "awaiting identity"}</Text>
               </View>
               <Text style={styles.chevron}>›</Text>
             </Pressable>
@@ -102,6 +139,16 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#10162A", fontSize: 14, fontWeight: "800" },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   statusText: { color: "#7F8AA5", fontSize: 11, lineHeight: 16 },
+  requestCard: { backgroundColor: "#201E31", borderColor: "#51456F", borderWidth: 1, borderRadius: 18, padding: 16, gap: 10 },
+  requestTitle: { color: "#F4EEFF", fontSize: 16, fontWeight: "800" },
+  requestBody: { color: "#BDB2D5", fontSize: 12, lineHeight: 18 },
+  requestRow: { borderTopColor: "#3B3350", borderTopWidth: 1, paddingTop: 11, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  requestName: { color: "#E8DFFF", fontSize: 13, fontWeight: "700", flex: 1 },
+  requestActions: { flexDirection: "row", gap: 8 },
+  rejectButton: { borderColor: "#635978", borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, minHeight: 36, alignItems: "center", justifyContent: "center" },
+  rejectButtonText: { color: "#CFC5E0", fontSize: 12, fontWeight: "700" },
+  acceptButton: { backgroundColor: "#5EE1A3", borderRadius: 10, paddingHorizontal: 14, minHeight: 36, alignItems: "center", justifyContent: "center" },
+  acceptButtonText: { color: "#10251E", fontSize: 12, fontWeight: "800" },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
   sectionTitle: { color: "#F6F7FB", fontSize: 17, fontWeight: "800" },
   sectionCount: { color: "#7F8AA5", fontSize: 14, fontWeight: "700" },
