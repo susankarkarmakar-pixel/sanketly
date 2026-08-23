@@ -1,21 +1,45 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import type { OutboxRecord } from "@sanketly/domain";
+import { generateMeshIdentity, type MeshIdentity } from "@sanketly/mesh-crypto";
 
 const OUTBOX_KEY = "sanketly.outbox.v1";
-const PEER_ID_KEY = "sanketly.peer-id.v1";
+const MESH_IDENTITY_KEY = "sanketly.mesh-identity.v1";
 
 export function createId(prefix: string): string {
   const random = Math.random().toString(36).slice(2, 12);
   return `${prefix}-${Date.now().toString(36)}-${random}`;
 }
 
-export async function loadPeerId(): Promise<string> {
-  const existing = await SecureStore.getItemAsync(PEER_ID_KEY);
-  if (existing) return existing;
-  const created = createId("peer");
-  await SecureStore.setItemAsync(PEER_ID_KEY, created);
+function isMeshIdentity(value: unknown): value is MeshIdentity {
+  if (!value || typeof value !== "object") return false;
+  const identity = value as Partial<MeshIdentity>;
+  return [
+    "peerId",
+    "signingPublicKey",
+    "signingPrivateKey",
+    "encryptionPublicKey",
+    "encryptionPrivateKey",
+  ].every((key) => typeof identity[key as keyof MeshIdentity] === "string");
+}
+
+export async function loadMeshIdentity(): Promise<MeshIdentity> {
+  const existing = await SecureStore.getItemAsync(MESH_IDENTITY_KEY);
+  if (existing) {
+    try {
+      const parsed: unknown = JSON.parse(existing);
+      if (isMeshIdentity(parsed)) return parsed;
+    } catch {
+      // Corrupt identity records are replaced with a new identity below.
+    }
+  }
+  const created = await generateMeshIdentity();
+  await SecureStore.setItemAsync(MESH_IDENTITY_KEY, JSON.stringify(created));
   return created;
+}
+
+export async function loadPeerId(): Promise<string> {
+  return (await loadMeshIdentity()).peerId;
 }
 
 export async function loadOutbox(): Promise<OutboxRecord[]> {

@@ -27,6 +27,7 @@ export interface Conversation {
 }
 
 export interface OutboxRecord extends MessageEnvelope {
+  meshPacket?: MeshPacket;
   attempts: number;
   lastAttemptAt?: number;
   lastError?: string;

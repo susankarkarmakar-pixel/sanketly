@@ -99,6 +99,9 @@ importers:
       '@sanketly/domain':
         specifier: workspace:*
         version: link:../packages/domain
+      '@sanketly/mesh-crypto':
+        specifier: workspace:*
+        version: link:../packages/mesh-crypto
       '@sanketly/mesh-native':
         specifier: file:./modules/sanketly-mesh
         version: file:mobile/modules/sanketly-mesh(expo@54.0.37)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)
@@ -183,6 +186,25 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+
+  packages/mesh-crypto:
+    dependencies:
+      '@sanketly/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      libsodium-wrappers-sumo:
+        specifier: ^0.8.4
+        version: 0.8.4
+    devDependencies:
+      '@types/libsodium-wrappers-sumo':
+        specifier: ^0.8.2
+        version: 0.8.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.1.5(@types/node@24.13.3)(terser@5.50.0)(yaml@2.9.0))
 
   packages/protocol:
     devDependencies:
@@ -1833,6 +1855,10 @@ packages:
 
   '@types/libsodium-wrappers-sumo@0.7.5':
     resolution: {integrity: sha512-CL7rmLxw28H/FpFUnMu5BzzRsE+ICxHBpRoaY8ks+3HMsCJdA/Vp809sj+qNhw64Ht0OEnfoN3BC1sHwagoVaw==}
+
+  '@types/libsodium-wrappers-sumo@0.8.2':
+    resolution: {integrity: sha512-uFOBpg/r21hExVlh2ty8YpDfSR+Yy3Jn8XS4+SSjitbhTxdYq+pBz/49XRxyUFe8SzqujHf/Wu0/O4d+FUtNfQ==}
+    deprecated: This is a stub types definition. libsodium-wrappers-sumo provides its own type definitions, so you do not need this installed.
 
   '@types/libsodium-wrappers@0.8.2':
     resolution: {integrity: sha512-+2IDfSULPUskSjIYfZl9suIUsIE5PXwoKZiE/j0MZWd+M9nEGvJDsk/ztMZKNhL1lBL+1CaypW0dQSjqPW2dMg==}
@@ -7040,6 +7066,10 @@ snapshots:
   '@types/libsodium-wrappers-sumo@0.7.5':
     dependencies:
       '@types/libsodium-wrappers': 0.8.2
+
+  '@types/libsodium-wrappers-sumo@0.8.2':
+    dependencies:
+      libsodium-wrappers-sumo: 0.8.4
 
   '@types/libsodium-wrappers@0.8.2':
     dependencies:

@@ -1,8 +1,10 @@
+import type { MeshIdentity } from "@sanketly/mesh-crypto";
+import { encryptMeshMessage, envelopeToMeshPacket } from "@sanketly/mesh-crypto";
 import type { OutboxRecord } from "@sanketly/domain";
 import type { MeshPeer, TransportStatus } from "@sanketly/protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import { MeshNative } from "@/modules/sanketly-mesh/src";
-import { createId, loadPeerId, MobileOutboxStore } from "./storage";
+import { createId, loadMeshIdentity, MobileOutboxStore } from "./storage";
 
 export interface LocalMessage {
   id: string;
@@ -32,13 +34,15 @@ const SanketlyContext = createContext<SanketlyContextValue | null>(null);
 const outbox = new MobileOutboxStore();
 
 export function SanketlyProvider({ children }: PropsWithChildren) {
-  const [peerId, setPeerId] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<MeshIdentity | null>(null);
   const [meshStatus, setMeshStatus] = useState<TransportStatus>(initialStatus);
   const [peers, setPeers] = useState<MeshPeer[]>([]);
   const [messages, setMessages] = useState<Record<string, LocalMessage[]>>({});
 
   useEffect(() => {
-    void loadPeerId().then(setPeerId);
+    void loadMeshIdentity().then(setIdentity).catch((error: unknown) => {
+      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to create secure identity" });
+    });
     const unsubscribe = MeshNative.subscribe((event) => {
       if (event.type === "status") {
         setMeshStatus({ kind: "mesh", state: event.state === "stopped" ? "disabled" : event.state, detail: event.detail });
@@ -78,26 +82,48 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
 
   const queueMessage = useCallback(async (targetPeerId: string, body: string) => {
     if (!body.trim()) throw new Error("Message cannot be empty");
-    if (!peerId) throw new Error("Local identity is still loading");
+    if (!identity) throw new Error("Secure identity is still loading");
+    const recipient = peers.find((peer) => peer.peerId === targetPeerId);
+    if (!recipient?.encryptionPublicKey) {
+      throw new Error("Recipient encryption key is not available; complete authenticated peer discovery first");
+    }
 
     const now = Date.now();
+    const messageId = createId("message");
+    const conversationId = `dm:${targetPeerId}`;
+    const expiresAt = now + 7 * 24 * 60 * 60 * 1000;
+    const envelope = await encryptMeshMessage({
+      identity,
+      recipient: { peerId: targetPeerId, encryptionPublicKey: recipient.encryptionPublicKey },
+      messageId,
+      conversationId,
+      body: body.trim(),
+      createdAt: now,
+      expiresAt,
+    });
+    const meshPacket = envelopeToMeshPacket({ envelope, packetId: createId("packet") });
     const localMessage: LocalMessage = {
-      id: createId("message"),
+      id: messageId,
       peerId: targetPeerId,
       body: body.trim(),
       createdAt: now,
       deliveryState: "queued",
     };
     const outboxRecord: OutboxRecord = {
-      messageId: localMessage.id,
-      conversationId: `dm:${targetPeerId}`,
-      senderId: peerId,
+      messageId,
+      conversationId,
+      senderId: identity.peerId,
       recipientId: targetPeerId,
-      ciphertext: "pending-native-encryption",
+      ciphertext: envelope.ciphertext,
       createdAt: now,
-      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      expiresAt,
       deliveryState: "queued",
       attempts: 0,
+      cryptoVersion: envelope.version,
+      senderSigningPublicKey: envelope.senderSigningPublicKey,
+      senderEncryptionPublicKey: envelope.senderEncryptionPublicKey,
+      signature: envelope.signature,
+      meshPacket,
     };
     await outbox.upsert(outboxRecord);
     setMessages((current) => ({
@@ -105,9 +131,9 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
       [targetPeerId]: [...(current[targetPeerId] ?? []), localMessage],
     }));
     return localMessage;
-  }, [peerId]);
+  }, [identity, peers]);
 
-  const value = useMemo(() => ({ peerId, meshStatus, peers, messages, startMesh, stopMesh, queueMessage }), [peerId, meshStatus, peers, messages, startMesh, stopMesh, queueMessage]);
+  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, messages, startMesh, stopMesh, queueMessage }), [identity, meshStatus, peers, messages, startMesh, stopMesh, queueMessage]);
   return <SanketlyContext.Provider value={value}>{children}</SanketlyContext.Provider>;
 }
 

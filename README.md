@@ -6,7 +6,7 @@ A privacy-first, end-to-end encrypted messaging app. Currently implemented: pass
 
 ## Mobile foundation
 
-The `mobile/` package contains the Expo/React Native shell, secure local peer identity storage, durable local outbox, mesh status UI, and a native Swift/Kotlin module boundary. Shared packet framing, TTL/hop rules, deduplication, delivery states, and transport contracts live in `packages/protocol` and `packages/domain`.
+The `mobile/` package contains the Expo/React Native shell, secure local peer identity storage, durable local outbox, mesh status UI, and a native Swift/Kotlin module boundary. Shared packet framing, TTL/hop rules, deduplication, delivery states, and transport contracts live in `packages/protocol` and `packages/domain`. The `@sanketly/mesh-crypto` package seals mesh messages with libsodium, signs authenticated metadata with Ed25519, and verifies envelopes before decryption.
 
 The current native module is a foundation rather than a finished offline network: it exposes lifecycle and framed-packet send hooks, while production BLE scanning, advertising, GATT connections, MTU-aware fragmentation, background restoration, and secure session integration remain the next milestone. The UI labels local development messages as queued and does not falsely report BLE delivery.
 

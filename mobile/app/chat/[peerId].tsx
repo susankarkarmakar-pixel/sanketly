@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useSanketly, type LocalMessage } from "@/lib/sanketly-provider";
 
@@ -13,8 +13,12 @@ export default function ChatScreen() {
 
   async function handleSend() {
     if (!peerId || !draft.trim()) return;
-    await queueMessage(peerId, draft);
-    setDraft("");
+    try {
+      await queueMessage(peerId, draft);
+      setDraft("");
+    } catch (error) {
+      Alert.alert("Message not queued", error instanceof Error ? error.message : "Unable to encrypt this message");
+    }
   }
 
   return (
@@ -33,7 +37,7 @@ export default function ChatScreen() {
 
         <View style={styles.notice}>
           <Text style={styles.noticeTitle}>Protocol outbox enabled</Text>
-          <Text style={styles.noticeBody}>Messages are persisted as queued records. Native session encryption and BLE delivery will replace the development placeholder in the next milestone.</Text>
+          <Text style={styles.noticeBody}>Messages are sealed with libsodium before they enter the durable outbox. Delivery remains queued until an authenticated peer transport is available.</Text>
         </View>
 
         <FlatList
@@ -42,7 +46,7 @@ export default function ChatScreen() {
           data={conversation}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <MessageBubble message={item} />}
-          ListEmptyComponent={<Text style={styles.emptyText}>No messages yet. Send a test message to exercise the local outbox.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>No messages yet. An authenticated nearby peer is required before a message can be encrypted.</Text>}
         />
 
         <View style={styles.composerRow}>

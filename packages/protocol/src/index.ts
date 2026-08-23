@@ -22,6 +22,10 @@ export interface MeshPacket {
   messageId?: string;
   senderId: string;
   recipientId?: string;
+  conversationId?: string;
+  cryptoVersion?: number;
+  senderSigningPublicKey?: string;
+  senderEncryptionPublicKey?: string;
   createdAt: number;
   expiresAt: number;
   hopLimit: number;
@@ -41,11 +45,17 @@ export interface MessageEnvelope {
   expiresAt: number;
   deliveryState: DeliveryState;
   transport?: TransportKind;
+  cryptoVersion?: number;
+  senderSigningPublicKey?: string;
+  senderEncryptionPublicKey?: string;
+  signature?: string;
 }
 
 export interface MeshPeer {
   peerId: string;
   displayName?: string;
+  encryptionPublicKey?: string;
+  signingPublicKey?: string;
   lastSeenAt: number;
   verified: boolean;
   connectionState: "discovered" | "connecting" | "connected" | "unavailable";
@@ -132,7 +142,17 @@ export function isMeshPacket(value: unknown): value is MeshPacket {
     typeof packet.hopCount === "number" &&
     packet.hopLimit >= 0 &&
     packet.hopCount >= 0 &&
-    packet.hopCount <= packet.hopLimit
+    packet.hopCount <= packet.hopLimit &&
+    (packet.type !== "message" || (
+      typeof packet.messageId === "string" &&
+      typeof packet.recipientId === "string" &&
+      typeof packet.conversationId === "string" &&
+      typeof packet.cryptoVersion === "number" &&
+      typeof packet.senderSigningPublicKey === "string" &&
+      typeof packet.senderEncryptionPublicKey === "string" &&
+      typeof packet.ciphertext === "string" &&
+      typeof packet.signature === "string"
+    ))
   );
 }
 
@@ -183,7 +203,12 @@ export function createMessagePacket(input: {
   messageId: string;
   senderId: string;
   recipientId: string;
+  conversationId: string;
   ciphertext: string;
+  signature: string;
+  cryptoVersion: number;
+  senderSigningPublicKey: string;
+  senderEncryptionPublicKey: string;
   now?: number;
   ttlMs?: number;
   hopLimit?: number;
@@ -196,10 +221,15 @@ export function createMessagePacket(input: {
     messageId: input.messageId,
     senderId: input.senderId,
     recipientId: input.recipientId,
+    conversationId: input.conversationId,
+    cryptoVersion: input.cryptoVersion,
+    senderSigningPublicKey: input.senderSigningPublicKey,
+    senderEncryptionPublicKey: input.senderEncryptionPublicKey,
     createdAt: now,
     expiresAt: now + (input.ttlMs ?? 7 * 24 * 60 * 60 * 1000),
     hopLimit: input.hopLimit ?? DEFAULT_HOP_LIMIT,
     hopCount: 0,
     ciphertext: input.ciphertext,
+    signature: input.signature,
   };
 }

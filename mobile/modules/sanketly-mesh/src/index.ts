@@ -3,6 +3,8 @@ import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 export interface NativeMeshPeer {
   peerId: string;
   displayName?: string;
+  encryptionPublicKey?: string;
+  signingPublicKey?: string;
   lastSeenAt: number;
   verified: boolean;
   connectionState: "discovered" | "connecting" | "connected" | "unavailable";
