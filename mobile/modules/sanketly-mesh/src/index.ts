@@ -1,6 +1,9 @@
-import { NativeEventEmitter, NativeModules, Platform } from "react-native";
+import { requireNativeModule } from "expo";
+import { Platform } from "react-native";
 
 export interface NativeMeshPeer {
+  /** Stable native link identifier; it may be provisional before identity announcement. */
+  linkId: string;
   peerId: string;
   displayName?: string;
   encryptionPublicKey?: string;
@@ -13,23 +16,32 @@ export interface NativeMeshPeer {
 export type NativeMeshEvent =
   | { type: "status"; state: "starting" | "ready" | "stopped" | "error"; detail?: string }
   | { type: "peer"; peer: NativeMeshPeer }
-  | { type: "frame"; bytes: number[] };
+  | { type: "frame"; linkId: string; bytes: number[] };
 
 interface NativeMeshModule {
-  start(): Promise<void>;
+  addListener(eventName: "SanketlyMeshEvent", listener: (event: NativeMeshEvent) => void): { remove(): void };
+  removeListeners(count: number): void;
+  start(announceBytes: number[]): Promise<void>;
   stop(): Promise<void>;
-  sendFrame(peerId: string, bytes: number[]): Promise<void>;
+  sendFrame(linkId: string, bytes: number[]): Promise<void>;
 }
 
-const nativeModule = NativeModules.SanketlyMesh as NativeMeshModule | undefined;
-const emitter = nativeModule ? new NativeEventEmitter(NativeModules.SanketlyMesh) : undefined;
+let nativeModule: NativeMeshModule | undefined;
+if (Platform.OS !== "web") {
+  try {
+    nativeModule = requireNativeModule<NativeMeshModule>("SanketlyMesh");
+  } catch {
+    nativeModule = undefined;
+  }
+}
 
 export const MeshNative = {
   isAvailable: Platform.OS !== "web" && Boolean(nativeModule),
 
-  async start(): Promise<void> {
+  async start(announceBytes: number[]): Promise<void> {
     if (!nativeModule) throw new Error("Sanketly mesh native module is not installed");
-    await nativeModule.start();
+    if (announceBytes.length === 0) throw new Error("A local announce frame is required");
+    await nativeModule.start(announceBytes);
   },
 
   async stop(): Promise<void> {
@@ -37,15 +49,16 @@ export const MeshNative = {
     await nativeModule.stop();
   },
 
-  async sendFrame(peerId: string, bytes: number[]): Promise<void> {
+  async sendFrame(linkId: string, bytes: number[]): Promise<void> {
     if (!nativeModule) throw new Error("Sanketly mesh native module is not installed");
+    if (!linkId) throw new Error("A native link identifier is required");
     if (bytes.length === 0) throw new Error("Cannot send an empty frame");
-    await nativeModule.sendFrame(peerId, bytes);
+    await nativeModule.sendFrame(linkId, bytes);
   },
 
   subscribe(listener: (event: NativeMeshEvent) => void): () => void {
-    if (!emitter) return () => undefined;
-    const subscription = emitter.addListener("SanketlyMeshEvent", listener);
+    if (!nativeModule) return () => undefined;
+    const subscription = nativeModule.addListener("SanketlyMeshEvent", listener);
     return () => subscription.remove();
   },
 };

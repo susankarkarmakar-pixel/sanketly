@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DeduplicationCache,
   canRelay,
+  chunkBleFrame,
+  reassembleBleChunks,
   createMessagePacket,
   decodePacket,
   encodePacket,
@@ -63,5 +65,17 @@ describe("Sanketly mesh protocol", () => {
 
   it("rejects an invalid frame header", () => {
     expect(() => decodePacket(new Uint8Array([0, 0, 1, 123]))).toThrow("Invalid Sanketly frame header");
+  });
+
+  it("chunks and reassembles a BLE frame independent of arrival order", () => {
+    const frame = new Uint8Array(Array.from({ length: 500 }, (_, index) => index % 251));
+    const chunks = chunkBleFrame(frame, 42);
+    expect(chunks.length).toBe(4);
+    expect(reassembleBleChunks([chunks[2], chunks[0], chunks[3], chunks[1]])).toEqual(frame);
+    expect(reassembleBleChunks([chunks[0], chunks[0], chunks[1], chunks[2]])).toBeNull();
+  });
+
+  it("rejects oversized BLE frames", () => {
+    expect(() => chunkBleFrame(new Uint8Array(4097), 1)).toThrow("Invalid BLE frame length");
   });
 });

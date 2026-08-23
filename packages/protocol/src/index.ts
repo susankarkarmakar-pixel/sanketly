@@ -3,7 +3,75 @@ export const FRAME_MAGIC = new Uint8Array([0x53, 0x4b]);
 export const DEFAULT_HOP_LIMIT = 3;
 export const MAX_PACKET_BYTES = 4096;
 
+/** BLE identifiers are fixed across iOS and Android for cross-platform discovery. */
+export const BLE_SERVICE_UUID = "9E1A0001-6C1B-4D0B-9B0A-53414E4B4554";
+export const BLE_RX_CHARACTERISTIC_UUID = "9E1A0002-6C1B-4D0B-9B0A-53414E4B4554";
+export const BLE_TX_CHARACTERISTIC_UUID = "9E1A0003-6C1B-4D0B-9B0A-53414E4B4554";
+export const BLE_FRAME_VERSION = 1;
+export const BLE_CHUNK_HEADER_BYTES = 13;
+export const BLE_CHUNK_PAYLOAD_BYTES = 160;
+export const MAX_BLE_FRAME_BYTES = MAX_PACKET_BYTES;
+
+
 export type MeshPacketType = "announce" | "handshake" | "message" | "ack";
+
+export interface BleChunk {
+  frameId: number;
+  totalChunks: number;
+  index: number;
+  totalLength: number;
+  payload: Uint8Array;
+}
+
+export function chunkBleFrame(frame: Uint8Array, frameId: number): Uint8Array[] {
+  if (frame.length === 0 || frame.length > MAX_BLE_FRAME_BYTES) throw new Error("Invalid BLE frame length");
+  const totalChunks = Math.ceil(frame.length / BLE_CHUNK_PAYLOAD_BYTES);
+  if (totalChunks > 255) throw new Error("BLE frame requires too many chunks");
+  return Array.from({ length: totalChunks }, (_, index) => {
+    const start = index * BLE_CHUNK_PAYLOAD_BYTES;
+    const payload = frame.slice(start, start + BLE_CHUNK_PAYLOAD_BYTES);
+    const result = new Uint8Array(BLE_CHUNK_HEADER_BYTES + payload.length);
+    result.set([0x42, 0x43, BLE_FRAME_VERSION], 0);
+    new DataView(result.buffer).setUint32(3, frameId >>> 0);
+    result[7] = totalChunks;
+    result[8] = index;
+    new DataView(result.buffer).setUint32(9, frame.length);
+    result.set(payload, BLE_CHUNK_HEADER_BYTES);
+    return result;
+  });
+}
+
+export function decodeBleChunk(chunk: Uint8Array): BleChunk {
+  if (chunk.length < BLE_CHUNK_HEADER_BYTES || chunk[0] !== 0x42 || chunk[1] !== 0x43 || chunk[2] !== BLE_FRAME_VERSION) {
+    throw new Error("Invalid BLE chunk header");
+  }
+  const view = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  const frameId = view.getUint32(3);
+  const totalChunks = chunk[7];
+  const index = chunk[8];
+  const totalLength = view.getUint32(9);
+  if (totalChunks === 0 || index >= totalChunks || totalLength === 0 || totalLength > MAX_BLE_FRAME_BYTES) throw new Error("Invalid BLE chunk metadata");
+  return { frameId, totalChunks, index, totalLength, payload: chunk.slice(BLE_CHUNK_HEADER_BYTES) };
+}
+
+export function reassembleBleChunks(chunks: Iterable<Uint8Array>): Uint8Array | null {
+  const decoded = Array.from(chunks, decodeBleChunk);
+  if (decoded.length === 0) return null;
+  const first = decoded[0];
+  if (decoded.length !== first.totalChunks || decoded.some((chunk) => chunk.frameId !== first.frameId || chunk.totalChunks !== first.totalChunks || chunk.totalLength !== first.totalLength)) return null;
+  const byIndex = new Map(decoded.map((chunk) => [chunk.index, chunk]));
+  if (byIndex.size !== first.totalChunks) return null;
+  const result = new Uint8Array(first.totalLength);
+  let offset = 0;
+  for (let index = 0; index < first.totalChunks; index += 1) {
+    const chunk = byIndex.get(index);
+    if (!chunk || offset + chunk.payload.length > result.length) return null;
+    result.set(chunk.payload, offset);
+    offset += chunk.payload.length;
+  }
+  return offset === result.length ? result : null;
+}
+
 
 export type TransportKind = "mesh" | "internet";
 export type DeliveryState =
@@ -53,6 +121,7 @@ export interface MessageEnvelope {
 
 export interface MeshPeer {
   peerId: string;
+  linkId?: string;
   displayName?: string;
   encryptionPublicKey?: string;
   signingPublicKey?: string;
@@ -196,6 +265,27 @@ export class DeduplicationCache {
       if (now - timestamp > this.retentionMs) this.entries.delete(id);
     }
   }
+}
+
+export function createAnnouncePacket(input: {
+  packetId: string;
+  senderId: string;
+  payload: string;
+  now?: number;
+  ttlMs?: number;
+}): MeshPacket {
+  const now = input.now ?? Date.now();
+  return {
+    version: PROTOCOL_VERSION,
+    type: "announce",
+    packetId: input.packetId,
+    senderId: input.senderId,
+    payload: input.payload,
+    createdAt: now,
+    expiresAt: now + (input.ttlMs ?? 60_000),
+    hopLimit: 0,
+    hopCount: 0,
+  };
 }
 
 export function createMessagePacket(input: {
