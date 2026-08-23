@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { connectTransport, disconnectTransport, sendMessage, sendGroupMessage, onMessage, onError } from './index';
+import { connectTransport, disconnectTransport, sendMessage, sendGroupMessage, onMessage } from './index';
 import * as crypto from '@sanketly/crypto';
 import { clear as clearIdb } from 'idb-keyval'; // Ensure IDB is fully cleared
 
