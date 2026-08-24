@@ -77,3 +77,7 @@ bash ./android/gradlew -p android assembleRelease --no-daemon
 ```
 
 The installable artifact is written to `mobile/android/app/build/outputs/apk/release/app-release.apk`. The repository also includes `scripts/install-ssa-apk-3-devices.sh` for concurrent installation on explicitly selected ADB serials. Local testing should use a non-production test keystore; a production upload/release keystore must be created and protected before distribution outside the test team. Sideloaded test APKs may still trigger an Android/Play Protect warning because they are not distributed through Google Play.
+
+## Crypto startup requirement
+
+The mobile entrypoint is `index.js`, not a direct `expo-router/entry` import. It loads `react-native-get-random-values` before Expo Router evaluates the provider and `libsodium-wrappers-sumo`. This ordering is required because Hermes does not provide `globalThis.crypto.getRandomValues` by default, while the ESM libsodium bundle requires a secure random source during module initialization. Do not change the package `main` field back to `expo-router/entry` unless an equivalent secure-random bootstrap remains in front of it.
