@@ -76,4 +76,4 @@ export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin
 bash ./android/gradlew -p android assembleRelease --no-daemon
 ```
 
-The installable artifact is written to `mobile/android/app/build/outputs/apk/release/app-release.apk`. The repository also includes `scripts/install-ssa-apk-3-devices.sh` for concurrent installation on explicitly selected ADB serials. The release APK produced from the current test checkpoint is signed with the generated debug keystore for development testing only; create and protect a production upload/release keystore before distribution outside the test team.
+The installable artifact is written to `mobile/android/app/build/outputs/apk/release/app-release.apk`. The repository also includes `scripts/install-ssa-apk-3-devices.sh` for concurrent installation on explicitly selected ADB serials. Local testing should use a non-production test keystore; a production upload/release keystore must be created and protected before distribution outside the test team. Sideloaded test APKs may still trigger an Android/Play Protect warning because they are not distributed through Google Play.

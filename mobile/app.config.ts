@@ -7,6 +7,7 @@ const config: ExpoConfig = {
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   scheme: "ssa",
+  icon: "./assets/ssa-icon.png",
   ios: {
     supportsTablet: true,
     bundleIdentifier: "in.sanketsetu.alert",
