@@ -5,6 +5,7 @@ import { useColorScheme } from "react-native";
 
 export type SsaLanguage = "bn" | "en" | "hi";
 export type SsaThemeMode = "light" | "dark" | "system";
+export type SsaUserMode = "resident" | "volunteer";
 
 export type SsaColors = {
   background: string;
@@ -25,6 +26,7 @@ export type SsaColors = {
 
 const THEME_KEY = "ssa.theme-mode.v1";
 const LANGUAGE_KEY = "ssa.language.v1";
+const USER_MODE_KEY = "ssa.user-mode.v1";
 
 export const SSA_PALETTES: Record<"light" | "dark", SsaColors> = {
   dark: {
@@ -270,10 +272,12 @@ interface SsaThemeContextValue {
   colors: SsaColors;
   language: SsaLanguage;
   themeMode: SsaThemeMode;
+  userMode: SsaUserMode;
   resolvedTheme: "light" | "dark";
   text: SsaText;
   setLanguage(language: SsaLanguage): Promise<void>;
   setThemeMode(mode: SsaThemeMode): Promise<void>;
+  setUserMode(mode: SsaUserMode): Promise<void>;
 }
 
 const SsaThemeContext = createContext<SsaThemeContextValue | null>(null);
@@ -282,11 +286,13 @@ export function SsaThemeProvider({ children }: PropsWithChildren) {
   const systemTheme = useColorScheme() === "dark" ? "dark" : "light";
   const [language, setLanguageState] = useState<SsaLanguage>("bn");
   const [themeMode, setThemeModeState] = useState<SsaThemeMode>("system");
+  const [userMode, setUserModeState] = useState<SsaUserMode>("resident");
 
   useEffect(() => {
-    void Promise.all([AsyncStorage.getItem(LANGUAGE_KEY), AsyncStorage.getItem(THEME_KEY)]).then(([savedLanguage, savedTheme]) => {
+    void Promise.all([AsyncStorage.getItem(LANGUAGE_KEY), AsyncStorage.getItem(THEME_KEY), AsyncStorage.getItem(USER_MODE_KEY)]).then(([savedLanguage, savedTheme, savedUserMode]) => {
       if (savedLanguage === "bn" || savedLanguage === "en" || savedLanguage === "hi") setLanguageState(savedLanguage);
       if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") setThemeModeState(savedTheme);
+      if (savedUserMode === "resident" || savedUserMode === "volunteer") setUserModeState(savedUserMode);
     }).catch(() => undefined);
   }, []);
 
@@ -300,16 +306,23 @@ export function SsaThemeProvider({ children }: PropsWithChildren) {
     await AsyncStorage.setItem(THEME_KEY, next);
   }, []);
 
+  const setUserMode = useCallback(async (next: SsaUserMode) => {
+    setUserModeState(next);
+    await AsyncStorage.setItem(USER_MODE_KEY, next);
+  }, []);
+
   const resolvedTheme = themeMode === "system" ? systemTheme : themeMode;
   const value = useMemo<SsaThemeContextValue>(() => ({
     colors: SSA_PALETTES[resolvedTheme],
     language,
     themeMode,
+    userMode,
     resolvedTheme,
     text: TEXT[language],
     setLanguage,
     setThemeMode,
-  }), [language, resolvedTheme, setLanguage, setThemeMode, themeMode]);
+    setUserMode,
+  }), [language, resolvedTheme, setLanguage, setThemeMode, setUserMode, themeMode, userMode]);
 
   return <SsaThemeContext.Provider value={value}>{children}</SsaThemeContext.Provider>;
 }

@@ -1,7 +1,8 @@
 import { router } from "expo-router";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { PermissionsAndroid, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
-import { PeerRow, SsaButton, SsaCard, StatusPill } from "@/components/ssa/ssa-ui";
+import { PeerRow, ReadinessRow, SsaButton, SsaCard, StatusPill } from "@/components/ssa/ssa-ui";
 import { useSsaTheme, type SsaColors } from "@/lib/ssa-theme";
 import { useSanketly } from "@/lib/sanketly-provider";
 import { isMeshActive, transportLabel, verifiedPeerCount } from "@/features/network/network-utils";
@@ -12,9 +13,26 @@ export default function NetworkScreen() {
   const styles = makeStyles(colors);
   const active = isMeshActive(meshStatus);
   const verified = verifiedPeerCount(peers);
+  const [permissionsReady, setPermissionsReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== "android") { setPermissionsReady(true); return; }
+    let mounted = true;
+    const permissions = [
+      Platform.Version >= 31 ? PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN : undefined,
+      Platform.Version >= 31 ? PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT : undefined,
+      Platform.Version >= 31 ? PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE : undefined,
+      Platform.Version >= 32 ? PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES : undefined,
+      Platform.Version >= 33 ? PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS : undefined,
+      Platform.Version >= 29 && Platform.Version <= 31 ? PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION : undefined,
+      Platform.Version <= 28 ? PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION : undefined,
+    ].filter(Boolean) as Parameters<typeof PermissionsAndroid.check>[0][];
+    void Promise.all(permissions.map((permission) => PermissionsAndroid.check(permission))).then((results) => { if (mounted) setPermissionsReady(results.every(Boolean)); }).catch(() => { if (mounted) setPermissionsReady(false); });
+    return () => { mounted = false; };
+  }, [meshStatus.state]);
   return <ScreenContainer edges={["top", "left", "right", "bottom"]}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <View style={styles.header}><View><Text style={styles.eyebrow}>SSA / NETWORK</Text><Text style={styles.title}>{text.network}</Text><Text style={styles.subtitle}>{language === "bn" ? "শুধু কাছাকাছি সেতু ও যাচাই করা পরিচয়" : language === "hi" ? "केवल नज़दीकी पुल और सत्यापित पहचान" : "Nearby bridges and verified identities only"}</Text></View><Text onPress={() => router.back()} style={styles.back}>{text.back}</Text></View>
     <SsaCard style={styles.statusCard}><StatusPill state={meshStatus.state} detail={meshStatus.detail} /><Text style={styles.statusTitle}>{active ? (language === "bn" ? "কাছের সংযোগ চলছে" : language === "hi" ? "नज़दीकी कनेक्शन चल रहा है" : "Nearby connection is active") : (language === "bn" ? "কাছের সংযোগ বন্ধ" : language === "hi" ? "नज़दीकी कनेक्शन बंद है" : "Nearby connection is stopped")}</Text><Text style={styles.statusBody}>{language === "bn" ? "Android-এ Google Nearby Connections P2P_CLUSTER প্রাথমিক পরিবহন। raw BLE fallback আলাদা পরীক্ষামূলক module হিসেবে রাখা আছে।" : language === "hi" ? "Android पर Google Nearby Connections P2P_CLUSTER मुख्य transport है। raw BLE fallback अलग प्रयोगात्मक module है।" : "Google Nearby Connections P2P_CLUSTER is the primary Android transport. The raw BLE fallback remains experimental."}</Text><SsaButton label={active ? text.stop : text.start} onPress={() => void (active ? stopMesh() : startMesh())} /></SsaCard>
+    <SsaCard><Text style={styles.section}>{text.networkReady}</Text><ReadinessRow label={language === "bn" ? "Nearby permission" : language === "hi" ? "Nearby अनुमति" : "Nearby permission"} detail={language === "bn" ? "Bluetooth ও Wi-Fi device access" : language === "hi" ? "Bluetooth और Wi-Fi device access" : "Bluetooth and Wi-Fi device access"} ready={permissionsReady} /><ReadinessRow label={language === "bn" ? "কাছের পরিবহন" : language === "hi" ? "नज़दीकी transport" : "Nearby transport"} detail={language === "bn" ? "Google Nearby P2P_CLUSTER" : language === "hi" ? "Google Nearby P2P_CLUSTER" : "Google Nearby P2P_CLUSTER"} ready={active} /><ReadinessRow label={language === "bn" ? "যাচাই করা ফোন" : language === "hi" ? "सत्यापित फ़ोन" : "Verified phones"} detail={language === "bn" ? "বার্তা পাঠানোর জন্য পরিচিত সেতু" : language === "hi" ? "संदेश भेजने के लिए परिचित सेतु" : "Known bridges for sending alerts"} ready={verified > 0} /></SsaCard>
     <SsaCard><View style={styles.sectionHeader}><Text style={styles.section}>{language === "bn" ? "পরিচিত ফোন" : language === "hi" ? "परिचित फ़ोन" : "Known phones"}</Text><Text style={styles.count}>{language === "bn" ? `${verified}টি যাচাই · ${peers.length}টি মোট` : language === "hi" ? `${verified} सत्यापित · ${peers.length} कुल` : `${verified} verified · ${peers.length} total`}</Text></View>{peers.length === 0 ? <Text style={styles.empty}>{text.noKnownPhones}</Text> : peers.map((peer) => <View key={peer.peerId}><PeerRow peer={peer} /><Text style={styles.transport}>{transportLabel(peer)}</Text></View>)}</SsaCard>
     {pendingNearbyRequests.length > 0 ? <SsaCard style={styles.requestCard}><Text style={styles.section}>{language === "bn" ? "অনুমতির অপেক্ষায়" : language === "hi" ? "अनुमति लंबित" : "Waiting for approval"}</Text>{pendingNearbyRequests.map((request) => <View key={request.endpointId} style={styles.requestRow}><View style={styles.requestCopy}><Text style={styles.peerName}>{request.name || "SSA device"}</Text><Text style={styles.peerMeta}>{language === "bn" ? "নিরাপত্তা কোড" : language === "hi" ? "सुरक्षा कोड" : "Security code"}: {request.authenticationToken}</Text></View><View style={styles.requestActions}><SsaButton label={text.no} variant="secondary" onPress={() => void rejectNearbyRequest(request.endpointId)} style={styles.smallButton} /><SsaButton label={text.permission} onPress={() => void acceptNearbyRequest(request.endpointId)} style={styles.smallButton} /></View></View>)}</SsaCard> : null}
     <SsaCard><Text style={styles.section}>{text.emergencyPersistence}</Text><Text style={styles.body}>{language === "bn" ? "Foreground notification এবং battery settings সক্রিয় রাখলে Android process recovery-এর সুযোগ বাড়ে। এটি force-stop বা OEM battery policy অতিক্রম করার নিশ্চয়তা নয়।" : language === "hi" ? "Foreground notification और battery settings चालू रखने से Android process recovery की संभावना बढ़ती है। यह force-stop या OEM policy को पार करने की गारंटी नहीं है।" : "Keeping the foreground notification and battery settings active improves the chance of Android process recovery. It cannot defeat force-stop or OEM policy."}</Text><SsaButton label={text.batterySettings} variant="secondary" onPress={() => void openBatterySettings()} /></SsaCard>

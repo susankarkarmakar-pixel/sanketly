@@ -1,9 +1,10 @@
 import { router } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
-import { AlertTypeTile, PeerRow, SsaButton, SsaCard, StatusPill } from "@/components/ssa/ssa-ui";
+import { AlertTypeTile, PeerRow, SsaButton, SsaCard, SosHoldButton, StatusPill } from "@/components/ssa/ssa-ui";
 import { ALERT_KIND_ORDER } from "@/constants/ssa";
-import { useSsaTheme, type SsaColors } from "@/lib/ssa-theme";
+import { alertKindLabel, useSsaTheme, type SsaColors } from "@/lib/ssa-theme";
+import { deliveryLabel } from "@/features/alerts/alert-utils";
 import { useSanketly } from "@/lib/sanketly-provider";
 
 export default function HomeScreen() {
@@ -32,6 +33,8 @@ export default function HomeScreen() {
           <Text style={styles.hint}>{text.queueHint}</Text>
         </SsaCard>
 
+        <SosHoldButton onConfirm={() => router.push({ pathname: "/alerts/compose", params: { kind: "sos" } })} />
+
         <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{text.emergencyWork}</Text><Text style={styles.sectionMeta}>{text.pilot}</Text></View>
         <View style={styles.actionGrid}>
           <Pressable accessibilityRole="button" onPress={() => router.push("/alerts/compose")} style={({ pressed }) => [styles.actionCard, styles.actionPrimary, pressed && styles.pressed]}>
@@ -45,6 +48,7 @@ export default function HomeScreen() {
         <SsaCard>
           <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{text.recentAlerts}</Text><Pressable accessibilityRole="button" onPress={() => router.push("/alerts")}><Text style={styles.link}>{text.seeAll}</Text></Pressable></View>
           <View style={styles.typeGrid}>{ALERT_KIND_ORDER.map((kind) => <AlertTypeTile key={kind} kind={kind} selected={false} onPress={() => router.push({ pathname: "/alerts/compose", params: { kind } })} />)}</View>
+          {alerts.length > 0 ? <View style={styles.recentList}>{alerts.slice(0, 3).map((record) => <Pressable accessibilityRole="button" key={record.messageId} onPress={() => router.push({ pathname: "/alerts/[messageId]", params: { messageId: record.messageId } })} style={styles.recentRow}><View style={[styles.recentMark, { backgroundColor: "#8EA9FF" }]} /><View style={styles.recentCopy}><Text style={styles.recentTitle} numberOfLines={1}>{record.alert.title}</Text><Text style={styles.recentMeta} numberOfLines={1}>{alertKindLabel(record.alert.kind, language)} · {record.alert.village} · {deliveryLabel(record.deliveryState)}</Text></View><Text style={styles.recentChevron}>›</Text></Pressable>)}</View> : <Text style={styles.recentEmpty}>{text.noAlerts}</Text>}
         </SsaCard>
 
         {pendingNearbyRequests.length > 0 ? <SsaCard style={styles.requestCard}>
@@ -92,6 +96,14 @@ function makeStyles(colors: SsaColors) {
     actionTitle: { color: colors.foreground, fontSize: 14, fontWeight: "900" },
     actionSubtitle: { color: colors.muted, fontSize: 10, lineHeight: 14 },
     typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between" },
+    recentList: { marginTop: 10, borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+    recentRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    recentMark: { width: 5, height: 34, borderRadius: 3, marginRight: 10 },
+    recentCopy: { flex: 1, gap: 3 },
+    recentTitle: { color: colors.foreground, fontSize: 12, fontWeight: "800" },
+    recentMeta: { color: colors.faint, fontSize: 10 },
+    recentChevron: { color: colors.faint, fontSize: 22, marginLeft: 8 },
+    recentEmpty: { color: colors.faint, fontSize: 11, marginTop: 9 },
     requestCard: { backgroundColor: colors.criticalSurface, borderColor: colors.danger },
     requestTitle: { color: colors.foreground, fontSize: 15, fontWeight: "900" },
     requestBody: { color: colors.muted, fontSize: 12, lineHeight: 18, marginBottom: 5 },

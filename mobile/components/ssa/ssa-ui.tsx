@@ -1,6 +1,7 @@
 import type { MeshPeer } from "@sanketly/protocol";
 import type { AlertPriority, StructuredAlertKind } from "@sanketly/domain";
-import { Pressable, StyleSheet, Text, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View, Vibration, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { ALERT_KIND_LABELS } from "@/constants/ssa";
 import { alertKindLabel, priorityLabel, useSsaTheme } from "@/lib/ssa-theme";
 
@@ -57,6 +58,21 @@ export function PriorityChip({ priority }: { priority: AlertPriority }) {
   return <View style={[styles.priorityChip, { borderColor: `${color}88`, backgroundColor: `${color}22` }]}><Text style={[styles.priorityText, { color }]}>{priorityLabel(priority, language)}</Text></View>;
 }
 
+export function ReadinessRow({ label, detail, ready }: { label: string; detail: string; ready: boolean | null }) {
+  const { colors, language } = useSsaTheme();
+  const status = ready === null ? (language === "bn" ? "চেক হচ্ছে" : language === "hi" ? "जाँच जारी" : "Checking") : ready ? (language === "bn" ? "ঠিক আছে" : language === "hi" ? "ठीक है" : "Ready") : (language === "bn" ? "মনোযোগ দরকার" : language === "hi" ? "ध्यान आवश्यक" : "Needs attention");
+  return <View style={[styles.readinessRow, { borderBottomColor: colors.border }]}><View style={[styles.readinessDot, { backgroundColor: ready === null ? colors.faint : ready ? colors.success : colors.warning }]} /><View style={styles.readinessCopy}><Text style={[styles.readinessLabel, { color: colors.foreground }]}>{label}</Text><Text style={[styles.readinessDetail, { color: colors.faint }]}>{detail}</Text></View><Text style={[styles.readinessStatus, { color: ready === null ? colors.faint : ready ? colors.success : colors.warning }]}>{status}</Text></View>;
+}
+
+export function SosHoldButton({ onConfirm }: { onConfirm: () => void }) {
+  const { colors, language } = useSsaTheme();
+  const [holding, setHolding] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  const copy = language === "bn" ? { title: "SOS পাঠাতে ধরে রাখুন", hint: "১.৫ সেকেন্ড ধরে রাখুন · ছেড়ে দিলে বাতিল", active: "আরও একটু ধরে রাখুন…" } : language === "hi" ? { title: "SOS भेजने के लिए दबाकर रखें", hint: "१.५ सेकंड दबाकर रखें · छोड़ने पर रद्द", active: "थोड़ा और दबाकर रखें…" } : { title: "Hold to send SOS", hint: "Hold for 1.5 seconds · release to cancel", active: "Keep holding…" };
+  return <Pressable accessibilityRole="button" accessibilityLabel={copy.title} onPressIn={() => { setHolding(true); timerRef.current = setTimeout(() => { setHolding(false); Vibration.vibrate(60); onConfirm(); }, 1500); }} onPressOut={() => { setHolding(false); if (timerRef.current) clearTimeout(timerRef.current); }} style={({ pressed }) => [styles.sosButton, { backgroundColor: colors.criticalSurface, borderColor: colors.danger }, pressed && styles.pressed]}><View style={[styles.sosBadge, { backgroundColor: colors.danger }]}><Text style={[styles.sosBadgeText, { color: colors.primaryInk }]}>SOS</Text></View><View style={styles.sosCopy}><Text style={[styles.sosTitle, { color: colors.foreground }]}>{holding ? copy.active : copy.title}</Text><Text style={[styles.sosHint, { color: colors.muted }]}>{copy.hint}</Text></View></Pressable>;
+}
+
 export function PeerRow({ peer, onPress }: { peer: MeshPeer; onPress?: () => void }) {
   const { colors, language } = useSsaTheme();
   const status = peer.verified ? (language === "bn" ? "পরিচয় যাচাই হয়েছে" : language === "hi" ? "पहचान सत्यापित" : "Identity verified") : (language === "bn" ? "পরিচয় যাচাই হচ্ছে" : language === "hi" ? "पहचान सत्यापित हो रही है" : "Identity being verified");
@@ -97,4 +113,16 @@ const styles = StyleSheet.create({
   peerName: { fontSize: 14, fontWeight: "800" },
   peerMeta: { fontSize: 11 },
   chevron: { fontSize: 26, fontWeight: "300" },
+  readinessRow: { flexDirection: "row", alignItems: "center", paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  readinessDot: { width: 9, height: 9, borderRadius: 5, marginRight: 10 },
+  readinessCopy: { flex: 1, gap: 2 },
+  readinessLabel: { fontSize: 12, fontWeight: "800" },
+  readinessDetail: { fontSize: 10 },
+  readinessStatus: { fontSize: 10, fontWeight: "900" },
+  sosButton: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 18, padding: 14, gap: 12 },
+  sosBadge: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
+  sosBadgeText: { fontSize: 12, fontWeight: "900" },
+  sosCopy: { flex: 1, gap: 4 },
+  sosTitle: { fontSize: 14, fontWeight: "900" },
+  sosHint: { fontSize: 10, lineHeight: 14 },
 });
