@@ -46,6 +46,8 @@ A structured alert contains a schema version, type, priority, title, description
 
 The local UI uses honest delivery vocabulary. `queued` means the encrypted packet is durably stored for another attempt; `relaying` means a next hop was selected; `delivered` requires recipient-side processing evidence; `expired` means the packet’s deadline passed; and `failed` means retry policy ended. A native API accepting a byte payload is not itself treated as delivery confirmation.
 
+When a recipient decrypts a message, it creates a signed `received` acknowledgement bound to the original `messageId` and `packetId`. The acknowledgement is routed back through verified peers, checked for expiry and signature validity, and only then changes the sender’s durable outbox and alert record to `delivered`. This is delivery evidence, not proof that a human read or acted on the alert; authenticated `read` acknowledgements remain a future extension.
+
 ## Native transport and emergency persistence
 
 On Android, SSA uses Google Nearby Connections with `P2P_CLUSTER` as the primary transport. Bluetooth, nearby Wi-Fi, notification, and legacy location permissions are requested according to Android version. The foreground service uses a persistent notification, sticky restart, task-removal recovery, boot-time recovery configuration, and a JavaScript event buffer.

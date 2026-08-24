@@ -18,6 +18,7 @@ export const MAX_BLE_FRAME_BYTES = MAX_PACKET_BYTES;
 
 
 export type MeshPacketType = "announce" | "handshake" | "message" | "ack";
+export type AcknowledgementKind = "received" | "read";
 
 export interface BleChunk {
   frameId: number;
@@ -107,6 +108,9 @@ export interface MeshPacket {
   ciphertext?: string;
   payload?: string;
   signature?: string;
+  /** Original packet ID authenticated by an acknowledgement. */
+  ackForPacketId?: string;
+  ackKind?: AcknowledgementKind;
 }
 
 export interface MessageEnvelope {
@@ -164,7 +168,7 @@ export interface RouteCandidate {
 
 export function selectNextHop(packet: MeshPacket, peers: MeshPeer[], options: { localPeerId?: string; excludeLinkId?: string; now?: number } = {}): MeshPeer | null {
   const now = options.now ?? Date.now();
-  const hasDirectDestination = packet.type === "message" && peers.some((peer) => peer.peerId === packet.recipientId && peer.connectionState === "connected" && Boolean(peer.linkId) && peer.verified);
+  const hasDirectDestination = (packet.type === "message" || packet.type === "ack") && peers.some((peer) => peer.peerId === packet.recipientId && peer.connectionState === "connected" && Boolean(peer.linkId) && peer.verified);
   if (!canRelay(packet, now) && !hasDirectDestination) return null;
   const localPeerId = options.localPeerId;
   const candidates: RouteCandidate[] = peers
@@ -264,6 +268,15 @@ export function isMeshPacket(value: unknown): value is MeshPacket {
       typeof packet.senderEncryptionPublicKey === "string" &&
       typeof packet.ciphertext === "string" &&
       typeof packet.signature === "string"
+    )) &&
+    (packet.type !== "ack" || (
+      typeof packet.messageId === "string" &&
+      typeof packet.recipientId === "string" &&
+      typeof packet.conversationId === "string" &&
+      typeof packet.senderSigningPublicKey === "string" &&
+      typeof packet.signature === "string" &&
+      typeof packet.ackForPacketId === "string" &&
+      (packet.ackKind === "received" || packet.ackKind === "read")
     ))
   );
 }

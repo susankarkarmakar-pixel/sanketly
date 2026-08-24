@@ -4,6 +4,7 @@ import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet,
 import { ScreenContainer } from "@/components/screen-container";
 import { useSsaTheme, type SsaColors } from "@/lib/ssa-theme";
 import { useSanketly, type LocalMessage } from "@/lib/sanketly-provider";
+import { deliveryLabel } from "@/features/alerts/alert-utils";
 
 export default function ChatScreen() {
   const { peerId: rawPeerId } = useLocalSearchParams<{ peerId: string }>();
@@ -34,15 +35,15 @@ export default function ChatScreen() {
           <View style={styles.headerBadge}><Text style={styles.headerBadgeText}>E2E</Text></View>
         </View>
         <View style={styles.notice}><Text style={styles.noticeTitle}>{copy.noticeTitle}</Text><Text style={styles.noticeBody}>{copy.noticeBody}</Text></View>
-        <FlatList style={styles.list} contentContainerStyle={conversation.length === 0 ? styles.emptyList : styles.listContent} data={conversation} keyExtractor={(item) => item.id} renderItem={({ item }) => <MessageBubble message={item} colors={colors} />} ListEmptyComponent={<Text style={styles.emptyText}>{copy.empty}</Text>} />
+        <FlatList style={styles.list} contentContainerStyle={conversation.length === 0 ? styles.emptyList : styles.listContent} data={conversation} keyExtractor={(item) => item.id} renderItem={({ item }) => <MessageBubble message={item} colors={colors} language={language} />} ListEmptyComponent={<Text style={styles.emptyText}>{copy.empty}</Text>} />
         <View style={styles.composerRow}><TextInput value={draft} onChangeText={setDraft} placeholder={copy.placeholder} placeholderTextColor={colors.faint} style={styles.input} multiline returnKeyType="send" onSubmitEditing={() => void handleSend()} /><Pressable accessibilityRole="button" onPress={() => void handleSend()} style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}><Text style={styles.sendText}>↑</Text></Pressable></View>
       </KeyboardAvoidingView>
     </ScreenContainer>
   );
 }
 
-function MessageBubble({ message, colors }: { message: LocalMessage; colors: SsaColors }) {
-  return <View style={stylesFor(colors).messageRow}><View style={stylesFor(colors).messageBubble}><Text style={stylesFor(colors).messageText}>{message.body}</Text><Text style={stylesFor(colors).messageMeta}>{message.deliveryState} · {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text></View></View>;
+function MessageBubble({ message, colors, language }: { message: LocalMessage; colors: SsaColors; language: "bn" | "en" | "hi" }) {
+  return <View style={stylesFor(colors).messageRow}><View style={stylesFor(colors).messageBubble}><Text style={stylesFor(colors).messageText}>{message.body}</Text><Text style={stylesFor(colors).messageMeta}>{deliveryLabel(message.deliveryState, language)} · {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text></View></View>;
 }
 
 function makeStyles(colors: SsaColors) {

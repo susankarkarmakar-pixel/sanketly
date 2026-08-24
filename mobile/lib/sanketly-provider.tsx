@@ -1,4 +1,4 @@
-import { derivePeerId, encryptMeshMessage, envelopeToMeshPacket, type DecryptedMeshMessage, type MeshIdentity } from "@sanketly/mesh-crypto";
+import { createAcknowledgementPacket, derivePeerId, encryptMeshMessage, envelopeToMeshPacket, type DecryptedMeshMessage, type MeshIdentity } from "@sanketly/mesh-crypto";
 import { parseStructuredAlert, serializeStructuredAlert, type AlertRecord, type OutboxRecord, type StructuredAlert } from "@sanketly/domain";
 import { createAnnouncePacket, decodePacket, encodePacket, NEARBY_SERVICE_ID, type MeshPacket, type MeshPeer, type TransportStatus } from "@sanketly/protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
@@ -105,7 +105,8 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
         await sendPacketToPeer(peer, decodePacket(Uint8Array.from(bytes)));
       },
       events: {
-        onMessage: (message) => { void handleDecryptedMessage(message); },
+        onMessage: (message, packet) => { void handleDecryptedMessage(message, packet); },
+        onAcknowledgement: (packet) => { void handleAcknowledgement(packet); },
         onPacket: (packet, linkId) => {
           if (packet.type === "announce") handleAnnounce(linkId, packet);
         },
@@ -239,7 +240,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     }
   }
 
-  async function handleDecryptedMessage(message: DecryptedMeshMessage): Promise<void> {
+  async function handleDecryptedMessage(message: DecryptedMeshMessage, packet: MeshPacket): Promise<void> {
     const alert = parseStructuredAlert(message.body) ?? undefined;
     const localMessage: LocalMessage = {
       id: message.messageId,
@@ -258,6 +259,54 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
         void notifyReceivedAlert(alert, message.messageId, languageRef.current).catch(() => undefined);
       }
     }
+    await sendAcknowledgement(packet);
+  }
+
+  async function sendAcknowledgement(originalPacket: MeshPacket): Promise<void> {
+    const currentIdentity = identityRef.current;
+    if (!currentIdentity || originalPacket.type !== "message") return;
+    try {
+      const acknowledgement = await createAcknowledgementPacket({
+        identity: currentIdentity,
+        originalPacket,
+        packetId: createId("ack"),
+      });
+      const engine = meshEngineRef.current;
+      if (engine) {
+        await engine.send(acknowledgement, peersRef.current);
+      } else {
+        await relayQueue.upsert({
+          queueId: `${acknowledgement.packetId}:${currentIdentity.peerId}`,
+          packet: acknowledgement,
+          attempts: 0,
+          nextAttemptAt: Date.now(),
+          enqueuedAt: Date.now(),
+        });
+      }
+    } catch (error) {
+      await relayEventStore.append({ eventId: createId("relay-event"), packetId: originalPacket.packetId, messageId: originalPacket.messageId, kind: "failed", createdAt: Date.now(), detail: error instanceof Error ? error.message : "Unable to create acknowledgement" });
+    }
+  }
+
+  async function handleAcknowledgement(packet: MeshPacket): Promise<void> {
+    if (packet.type !== "ack" || !packet.messageId || !packet.ackForPacketId) return;
+    const outgoing = (await outbox.list()).find((record) => record.messageId === packet.messageId && record.recipientId === packet.senderId && record.meshPacket?.packetId === packet.ackForPacketId);
+    if (!outgoing) return;
+    await outbox.upsert({ ...outgoing, deliveryState: packet.ackKind === "read" ? "read" : "delivered" });
+    setMessages((current) => {
+      const peerMessages = current[outgoing.recipientId] ?? [];
+      return { ...current, [outgoing.recipientId]: peerMessages.map((message) => message.id === outgoing.messageId ? { ...message, deliveryState: "delivered" } : message) };
+    });
+    if (outgoing.meshPacket && outgoing.messageId) {
+      const storedAlerts = await alertStore.list();
+      const alertRecord = storedAlerts.find((record) => record.messageId === outgoing.messageId);
+      if (alertRecord) {
+        const updatedAlert = { ...alertRecord, deliveryState: "delivered" as const, updatedAt: Date.now() };
+        await alertStore.upsert(updatedAlert);
+        setAlerts((current) => current.map((record) => record.messageId === updatedAlert.messageId ? updatedAlert : record));
+      }
+    }
+    await relayEventStore.append({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "delivered", peerId: packet.senderId, createdAt: Date.now(), detail: "Authenticated recipient acknowledgement" });
   }
 
   async function sendPacketToPeer(peer: MeshPeer, packet: MeshPacket): Promise<void> {

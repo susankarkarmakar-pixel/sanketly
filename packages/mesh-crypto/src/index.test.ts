@@ -1,11 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   decryptMeshMessage,
+  createAcknowledgementPacket,
   decryptMeshPacket,
   encryptMeshMessage,
   envelopeToMeshPacket,
   generateMeshIdentity,
   initMeshCrypto,
+  verifyAcknowledgementPacket,
   type EncryptedMeshEnvelope,
 } from "./index";
 
@@ -74,5 +76,21 @@ describe("Sanketly mesh encryption", () => {
     const envelope = await makeEnvelope();
     const packet = envelopeToMeshPacket({ envelope, packetId: "packet-1", hopLimit: 3 });
     await expect(decryptMeshPacket({ identity: bob, packet, now: 2_000 })).resolves.toMatchObject({ body: "hello through the mesh" });
+  });
+
+  it("creates and verifies a recipient acknowledgement", async () => {
+    const envelope = await makeEnvelope();
+    const originalPacket = envelopeToMeshPacket({ envelope, packetId: "packet-ack" });
+    const acknowledgement = await createAcknowledgementPacket({ identity: bob, originalPacket, packetId: "ack-1", now: 2_000 });
+    expect(verifyAcknowledgementPacket({ packet: acknowledgement, expectedRecipientId: alice.peerId, now: 2_001 })).toBe(true);
+    expect(acknowledgement).toMatchObject({ type: "ack", messageId: "message-1", senderId: bob.peerId, recipientId: alice.peerId, ackForPacketId: "packet-ack", ackKind: "received" });
+  });
+
+  it("rejects tampered and expired acknowledgements", async () => {
+    const envelope = await makeEnvelope();
+    const originalPacket = envelopeToMeshPacket({ envelope, packetId: "packet-ack-tamper" });
+    const acknowledgement = await createAcknowledgementPacket({ identity: bob, originalPacket, packetId: "ack-tamper", now: 2_000 });
+    expect(() => verifyAcknowledgementPacket({ packet: { ...acknowledgement, ackForPacketId: "other-packet" }, expectedRecipientId: alice.peerId, now: 2_001 })).toThrow("Acknowledgement signature verification failed");
+    expect(() => verifyAcknowledgementPacket({ packet: acknowledgement, expectedRecipientId: alice.peerId, now: 10_000 })).toThrow("Acknowledgement has expired");
   });
 });

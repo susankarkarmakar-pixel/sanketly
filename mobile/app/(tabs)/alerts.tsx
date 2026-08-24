@@ -25,7 +25,7 @@ export default function AlertsScreen() {
           const meta = ALERT_KIND_LABELS[item.alert.kind];
           return <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/alerts/[messageId]", params: { messageId: item.messageId } })} style={({ pressed }) => [styles.alertRow, pressed && styles.pressed]}>
             <View style={[styles.alertMark, { backgroundColor: meta.color }]} />
-            <View style={styles.alertCopy}><View style={styles.rowTop}><Text style={styles.kind}>{alertKindLabel(item.alert.kind, language)}</Text><PriorityChip priority={item.alert.priority} /></View><Text style={styles.alertTitle} numberOfLines={1}>{item.alert.title}</Text><Text style={styles.alertMeta} numberOfLines={1}>{item.alert.village} · {deliveryLabel(item.deliveryState)}</Text></View><Text style={styles.chevron}>›</Text>
+            <View style={styles.alertCopy}><View style={styles.rowTop}><Text style={styles.kind}>{alertKindLabel(item.alert.kind, language)}</Text><PriorityChip priority={item.alert.priority} /></View><Text style={styles.alertTitle} numberOfLines={1}>{item.alert.title}</Text><Text style={styles.alertMeta} numberOfLines={1}>{item.alert.village} · {deliveryLabel(item.deliveryState, language)}</Text></View><Text style={styles.chevron}>›</Text>
           </Pressable>;
         }}
       />

@@ -1,4 +1,4 @@
-import { decryptMeshPacket, type DecryptedMeshMessage, type MeshIdentity } from "@sanketly/mesh-crypto";
+import { decryptMeshPacket, verifyAcknowledgementPacket, type DecryptedMeshMessage, type MeshIdentity } from "@sanketly/mesh-crypto";
 import {
   canRelay,
   decodePacket,
@@ -22,6 +22,7 @@ export interface MeshRelayStore {
 
 export interface MeshEngineEvents {
   onMessage(message: DecryptedMeshMessage, packet: MeshPacket): void;
+  onAcknowledgement?(packet: MeshPacket): void;
   onPacket(packet: MeshPacket, linkId: string): void;
   onRelay(packet: MeshPacket, viaPeer: MeshPeer): void;
   onQueued(packet: MeshPacket): void;
@@ -75,7 +76,13 @@ export class MeshEngine {
         return;
       }
 
-      if (packet.type !== "message" && packet.type !== "announce") return;
+      if (packet.type === "ack" && packet.recipientId === this.options.identity.peerId) {
+        verifyAcknowledgementPacket({ packet, expectedRecipientId: this.options.identity.peerId, now: this.now() });
+        this.options.events.onAcknowledgement?.(packet);
+        return;
+      }
+
+      if (packet.type !== "message" && packet.type !== "announce" && packet.type !== "ack") return;
       if (!shouldRelayPacket(packet, this.options.identity.peerId, this.now())) return;
       const relayedPacket = relayPacket(packet, this.options.identity.peerId, this.now());
       await this.sendOrQueue(relayedPacket, peers, linkId);

@@ -34,6 +34,29 @@ describe("Sanketly mesh protocol", () => {
     expect(decodePacket(encodePacket(packet))).toEqual(packet);
   });
 
+  it("routes an acknowledgement directly to its verified sender", () => {
+    const packet = {
+      version: 1,
+      type: "ack" as const,
+      packetId: "ack-1",
+      messageId: "message-1",
+      senderId: "bob",
+      recipientId: "alice",
+      conversationId: "dm:alice",
+      senderSigningPublicKey: "bob-signing-key",
+      createdAt: 1000,
+      expiresAt: 5000,
+      hopLimit: 3,
+      hopCount: 0,
+      ackForPacketId: "packet-1",
+      ackKind: "received" as const,
+      signature: "signature",
+    };
+    const destination = { peerId: "alice", linkId: "link-a", lastSeenAt: 1000, verified: true, connectionState: "connected" as const, transport: "nearby" as const };
+    expect(selectNextHop(packet, [destination], { localPeerId: "bob", now: 1000 })?.peerId).toBe("alice");
+    expect(decodePacket(encodePacket(packet))).toEqual(packet);
+  });
+
   it("selects the destination first and avoids the previous hop for relays", () => {
     const packet = createMessagePacket({
       packetId: "packet-route",

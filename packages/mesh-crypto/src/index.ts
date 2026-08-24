@@ -4,6 +4,7 @@ import { createMessagePacket, type MeshPacket } from "@sanketly/protocol";
 export const MESH_CRYPTO_VERSION = 1;
 export const IDENTITY_DOMAIN = "sanketly/mesh-identity/v1";
 export const MESSAGE_DOMAIN = "sanketly/mesh-message/v1";
+export const ACKNOWLEDGEMENT_DOMAIN = "sanketly/mesh-acknowledgement/v1";
 
 export interface MeshIdentity {
   peerId: string;
@@ -104,6 +105,117 @@ function canonicalMetadata(input: {
     input.senderSigningPublicKey,
     input.senderEncryptionPublicKey,
   ].join("\n");
+}
+
+function canonicalAcknowledgementMetadata(input: {
+  packetId: string;
+  messageId: string;
+  conversationId: string;
+  senderId: string;
+  recipientId: string;
+  ackForPacketId: string;
+  ackKind: "received" | "read";
+  createdAt: number;
+  expiresAt: number;
+  senderSigningPublicKey: string;
+}): string {
+  return [
+    ACKNOWLEDGEMENT_DOMAIN,
+    String(MESH_CRYPTO_VERSION),
+    input.packetId,
+    input.messageId,
+    input.conversationId,
+    input.senderId,
+    input.recipientId,
+    input.ackForPacketId,
+    input.ackKind,
+    String(input.createdAt),
+    String(input.expiresAt),
+    input.senderSigningPublicKey,
+  ].join("\n");
+}
+
+export async function createAcknowledgementPacket(input: {
+  identity: MeshIdentity;
+  originalPacket: MeshPacket;
+  packetId: string;
+  ackKind?: "received" | "read";
+  now?: number;
+  ttlMs?: number;
+}): Promise<MeshPacket> {
+  await initMeshCrypto();
+  requireReady();
+  const original = input.originalPacket;
+  const now = input.now ?? Date.now();
+  const ackKind = input.ackKind ?? "received";
+  if (original.type !== "message" || !original.messageId || !original.recipientId || !original.conversationId) {
+    throw new Error("Acknowledgement requires an original message packet");
+  }
+  if (original.recipientId !== input.identity.peerId) throw new Error("Only the message recipient can acknowledge it");
+  const expiresAt = Math.min(original.expiresAt, now + (input.ttlMs ?? 24 * 60 * 60 * 1000));
+  if (expiresAt <= now) throw new Error("Acknowledgement expiry is invalid");
+  const metadata = {
+    packetId: input.packetId,
+    messageId: original.messageId,
+    conversationId: original.conversationId,
+    senderId: input.identity.peerId,
+    recipientId: original.senderId,
+    ackForPacketId: original.packetId,
+    ackKind,
+    createdAt: now,
+    expiresAt,
+    senderSigningPublicKey: input.identity.signingPublicKey,
+  };
+  const signature = sodium.crypto_sign_detached(utf8(canonicalAcknowledgementMetadata(metadata)), fromBase64(input.identity.signingPrivateKey));
+  return {
+    version: MESH_CRYPTO_VERSION,
+    type: "ack",
+    packetId: input.packetId,
+    messageId: metadata.messageId,
+    senderId: metadata.senderId,
+    recipientId: metadata.recipientId,
+    conversationId: metadata.conversationId,
+    senderSigningPublicKey: metadata.senderSigningPublicKey,
+    createdAt: metadata.createdAt,
+    expiresAt: metadata.expiresAt,
+    hopLimit: 3,
+    hopCount: 0,
+    lastHopId: metadata.senderId,
+    ackForPacketId: metadata.ackForPacketId,
+    ackKind: metadata.ackKind,
+    signature: toBase64(signature),
+  };
+}
+
+export function verifyAcknowledgementPacket(input: {
+  packet: MeshPacket;
+  expectedRecipientId?: string;
+  now?: number;
+}): boolean {
+  const packet = input.packet;
+  const now = input.now ?? Date.now();
+  if (packet.type !== "ack" || !packet.messageId || !packet.recipientId || !packet.conversationId || !packet.ackForPacketId || !packet.senderSigningPublicKey || !packet.signature || !packet.ackKind) {
+    throw new Error("Acknowledgement packet is incomplete");
+  }
+  if (packet.expiresAt <= now || packet.expiresAt <= packet.createdAt) throw new Error("Acknowledgement has expired");
+  if (input.expectedRecipientId && packet.recipientId !== input.expectedRecipientId) throw new Error("Acknowledgement is addressed to another peer");
+  if (derivePeerId(packet.senderSigningPublicKey) !== packet.senderId) throw new Error("Acknowledgement identity does not match signing key");
+  const metadata = {
+    packetId: packet.packetId,
+    messageId: packet.messageId,
+    conversationId: packet.conversationId,
+    senderId: packet.senderId,
+    recipientId: packet.recipientId,
+    ackForPacketId: packet.ackForPacketId,
+    ackKind: packet.ackKind,
+    createdAt: packet.createdAt,
+    expiresAt: packet.expiresAt,
+    senderSigningPublicKey: packet.senderSigningPublicKey,
+  };
+  if (!sodium.crypto_sign_verify_detached(fromBase64(packet.signature), utf8(canonicalAcknowledgementMetadata(metadata)), fromBase64(packet.senderSigningPublicKey))) {
+    throw new Error("Acknowledgement signature verification failed");
+  }
+  return true;
 }
 
 function assertSafeEnvelope(envelope: EncryptedMeshEnvelope, now: number): void {

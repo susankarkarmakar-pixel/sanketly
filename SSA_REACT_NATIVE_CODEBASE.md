@@ -112,7 +112,7 @@ Relay nodes never need the plaintext or private keys of the sender/recipient. On
 
 A packet has a stable `packetId`, a creation and expiry time, a `hopLimit`, a current `hopCount`, and an optional `lastHopId`. The route selector filters to connected peers with a usable link. Encrypted messages require authenticated peers; announce packets may use an unverified link to bootstrap identity discovery. A direct verified destination is preferred over a relay. A relay does not immediately return a packet to the previous link or previous hop.
 
-The relay queue is capped at 512 records. Each record is retried with exponential backoff for no more than eight attempts and is removed on expiry or exhausted retry budget. Duplicate packet IDs are suppressed in memory by the protocol deduplication cache. The current delivery model is best-effort; end-to-end acknowledgements, route discovery, congestion control, and cryptographic ratcheting remain future protocol work.
+The relay queue is capped at 512 records. Each record is retried with exponential backoff for no more than eight attempts and is removed on expiry or exhausted retry budget. Duplicate packet IDs are suppressed in memory by the protocol deduplication cache. Recipient-side `received` acknowledgements are now signed by the recipient, bound to the original message and packet ID, validated for expiry, and routed back through the mesh. Authenticated `read` acknowledgements, route discovery, congestion control, and cryptographic ratcheting remain future protocol work.
 
 ## Android Nearby and emergency mode
 
@@ -154,4 +154,4 @@ Native development requires a physical Android device and a machine with Android
 
 ## Security and operational boundaries
 
-The client must not label a packet as delivered merely because it entered the local outbox or because a native API accepted a send request. The user-facing status vocabulary should distinguish `queued`, `relaying`, `sent to next hop`, `delivered`, `expired`, and `failed`. Before production emergency use, SSA needs formal threat modeling, secure key rotation or ratcheting, end-to-end acknowledgements, abuse/rate limiting, telemetry that does not expose message content, and field trials across the target Android OEMs.
+The client must not label a packet as delivered merely because it entered the local outbox or because a native API accepted a send request. The user-facing status vocabulary should distinguish `queued`, `relaying`, `sent to next hop`, `delivered` after a verified recipient acknowledgement, `expired`, and `failed`. Before production emergency use, SSA still needs formal threat modeling, secure key rotation or ratcheting, authenticated read acknowledgements if required, abuse/rate limiting, telemetry that does not expose message content, and field trials across the target Android OEMs.
