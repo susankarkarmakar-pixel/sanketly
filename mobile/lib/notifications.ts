@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import { createStructuredAlert } from "@sanketly/domain";
 import type { StructuredAlert } from "@sanketly/domain";
 import { alertKindLabel, priorityLabel, type SsaLanguage } from "./ssa-theme";
 
@@ -102,6 +103,21 @@ export async function notifyReceivedAlert(
     trigger: null,
   });
   return true;
+}
+
+export async function notifyTestAlert(language: SsaLanguage): Promise<boolean> {
+  const now = Date.now();
+  const alert = createStructuredAlert({
+    alertId: `test-alert-${now}`,
+    kind: "infrastructure",
+    priority: "normal",
+    title: language === "bn" ? "SSA পরীক্ষা বিজ্ঞপ্তি" : language === "hi" ? "SSA परीक्षण सूचना" : "SSA test notification",
+    description: language === "bn" ? "এটি শুধু ফোনের notification পরীক্ষা করার জন্য। এটি আসল জরুরি alert নয়।" : language === "hi" ? "यह केवल फोन की notification जाँचने के लिए है। यह वास्तविक आपातकालीन alert नहीं है।" : "This only tests phone notifications. It is not a real emergency alert.",
+    village: language === "bn" ? "পরীক্ষা এলাকা" : language === "hi" ? "परीक्षण क्षेत्र" : "Test area",
+    createdAt: now,
+    expiresAt: now + 10 * 60 * 1000,
+  });
+  return notifyReceivedAlert(alert, `test-message-${now}`, language);
 }
 
 export function getSsaNotificationMessageId(response: Notifications.NotificationResponse | null): string | null {

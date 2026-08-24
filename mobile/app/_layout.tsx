@@ -1,4 +1,5 @@
-import { Stack, useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Stack, usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
@@ -7,15 +8,34 @@ import { SsaThemeProvider, useSsaTheme } from "@/lib/ssa-theme";
 import { SanketlyProvider } from "@/lib/sanketly-provider";
 import { getSsaNotificationMessageId } from "@/lib/notifications";
 
+const WIZARD_COMPLETE_KEY = "ssa.readiness-wizard-complete.v1";
+const WIZARD_SKIPPED_KEY = "ssa.readiness-wizard-skipped.v1";
+
 function RouterShell() {
   const { resolvedTheme } = useSsaTheme();
   return (
     <SanketlyProvider>
       <NotificationNavigationBridge />
+      <FirstRunReadinessGate />
       <StatusBar style={resolvedTheme === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
     </SanketlyProvider>
   );
+}
+
+function FirstRunReadinessGate() {
+  const pathname = usePathname();
+  const router = useRouter();
+  useEffect(() => {
+    if (pathname !== "/") return;
+    let active = true;
+    void Promise.all([AsyncStorage.getItem(WIZARD_COMPLETE_KEY), AsyncStorage.getItem(WIZARD_SKIPPED_KEY), Notifications.getLastNotificationResponseAsync()]).then(([complete, skipped, response]) => {
+      if (!active || complete === "1" || skipped === "1" || getSsaNotificationMessageId(response)) return;
+      router.replace("/readiness");
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [pathname, router]);
+  return null;
 }
 
 function NotificationNavigationBridge() {

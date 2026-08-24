@@ -38,7 +38,11 @@ The repository sandbox can validate TypeScript and protocol behavior, but it doe
 | `modules/ssa-nearby/` | Primary Android Google Nearby Connections `P2P_CLUSTER` bridge and foreground service |
 | `modules/sanketly-mesh/` | Experimental raw BLE fallback; not the primary SSA pilot transport |
 
-The fuller repository map and execution diagram are in [`../SSA_REACT_NATIVE_CODEBASE.md`](../SSA_REACT_NATIVE_CODEBASE.md). The dashboard wireframe specification is [`../SSA_DASHBOARD_WIREFRAME_SPEC.md`](../SSA_DASHBOARD_WIREFRAME_SPEC.md).
+The fuller repository map and execution diagram are in [`../SSA_REACT_NATIVE_CODEBASE.md`](../SSA_REACT_NATIVE_CODEBASE.md). The dashboard wireframe specification is [`../SSA_DASHBOARD_WIREFRAME_SPEC.md`](../SSA_DASHBOARD_WIREFRAME_SPEC.md). The first-run readiness design is [`../SSA_FIRST_RUN_WIZARD_WIREFRAME_SPEC.md`](../SSA_FIRST_RUN_WIZARD_WIREFRAME_SPEC.md).
+
+## Feature-by-feature Test Center
+
+Settings now exposes the functional first-run readiness wizard and **Feature Test Center**. The Test Center runs local self-tests for libsodium initialization, SSA packet framing, SecureStore identity loading, and readiness checks. It also provides a clearly labeled synthetic notification test and direct links to the readiness wizard, Nearby network screen, SOS composer, structured alert composer, and informational onboarding. Synthetic tests never create or transmit a real emergency alert.
 
 ## Alert and message flow
 
