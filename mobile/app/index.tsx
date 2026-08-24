@@ -20,6 +20,7 @@ export default function HomeScreen() {
     stopMesh,
     acceptNearbyRequest,
     rejectNearbyRequest,
+    openBatterySettings,
   } = useSanketly();
   const meshActive = meshStatus.state === "ready" || meshStatus.state === "starting";
 
@@ -48,6 +49,13 @@ export default function HomeScreen() {
             <Text style={styles.primaryButtonText}>{meshActive ? "Stop nearby discovery" : "Start nearby discovery"}</Text>
           </Pressable>
           <Text style={styles.statusText}>{statusLabel(meshStatus.state)}{meshStatus.detail ? ` · ${meshStatus.detail}` : ""}</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void openBatterySettings()}
+            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.settingsButtonText}>Protect emergency mode from battery saving</Text>
+          </Pressable>
         </View>
 
         {pendingNearbyRequests.length > 0 && (
@@ -139,6 +147,8 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#10162A", fontSize: 14, fontWeight: "800" },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   statusText: { color: "#7F8AA5", fontSize: 11, lineHeight: 16 },
+  settingsButton: { borderColor: "#3B4A73", borderWidth: 1, borderRadius: 10, minHeight: 38, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
+  settingsButtonText: { color: "#AFC2FF", fontSize: 11, fontWeight: "700", textAlign: "center" },
   requestCard: { backgroundColor: "#201E31", borderColor: "#51456F", borderWidth: 1, borderRadius: 18, padding: 16, gap: 10 },
   requestTitle: { color: "#F4EEFF", fontSize: 16, fontWeight: "800" },
   requestBody: { color: "#BDB2D5", fontSize: 12, lineHeight: 18 },

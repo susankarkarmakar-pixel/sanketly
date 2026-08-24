@@ -31,6 +31,7 @@ interface SanketlyContextValue {
   stopMesh(): Promise<void>;
   acceptNearbyRequest(endpointId: string): Promise<void>;
   rejectNearbyRequest(endpointId: string): Promise<void>;
+  openBatterySettings(): Promise<void>;
   queueMessage(peerId: string, body: string): Promise<LocalMessage>;
 }
 
@@ -130,6 +131,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
       }
     });
     const unsubscribeNearby = NearbyNative.subscribe(handleNearbyEvent);
+    if (Platform.OS === "android") void NearbyNative.attach().catch(() => undefined);
     return () => {
       unsubscribeMesh();
       unsubscribeNearby();
@@ -301,6 +303,9 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
         if (Platform.Version >= 32 && PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES) {
           permissions.push(PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES);
         }
+        if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
+          permissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+        }
         if (Platform.Version >= 29 && Platform.Version <= 31) {
           permissions.push(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
         }
@@ -352,6 +357,11 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
   const rejectNearbyRequest = useCallback(async (endpointId: string) => {
     await NearbyNative.rejectConnection(endpointId);
     setPendingNearbyRequests((current) => current.filter((request) => request.endpointId !== endpointId));
+  }, []);
+
+  const openBatterySettings = useCallback(async () => {
+    if (Platform.OS !== "android") return;
+    await NearbyNative.openBatterySettings();
   }, []);
 
   const queueMessage = useCallback(async (targetPeerId: string, body: string) => {
@@ -413,7 +423,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     return localMessage;
   }, [identity, meshStatus.state, peers]);
 
-  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, queueMessage }), [identity, meshStatus, peers, pendingNearbyRequests, messages, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, queueMessage]);
+  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage }), [identity, meshStatus, peers, pendingNearbyRequests, messages, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage]);
   return <SanketlyContext.Provider value={value}>{children}</SanketlyContext.Provider>;
 }
 

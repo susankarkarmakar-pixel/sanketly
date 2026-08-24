@@ -21,8 +21,10 @@ export type NearbyEvent =
 interface NativeNearbyModule {
   addListener(eventName: "SsaNearbyEvent", listener: (event: NearbyEvent) => void): { remove(): void };
   removeListeners(count: number): void;
+  attach(): Promise<void>;
   start(serviceId: string, localName: string): Promise<void>;
   stop(): Promise<void>;
+  openBatterySettings(): Promise<void>;
   acceptConnection(endpointId: string): Promise<void>;
   rejectConnection(endpointId: string): Promise<void>;
   sendPayload(endpointId: string, bytes: number[]): Promise<void>;
@@ -40,6 +42,10 @@ if (Platform.OS === "android") {
 export const NearbyNative = {
   isAvailable: Platform.OS === "android" && Boolean(nativeModule),
 
+  async attach(): Promise<void> {
+    await nativeModule?.attach();
+  },
+
   async start(serviceId: string, localName: string): Promise<void> {
     if (!nativeModule) throw new Error("SSA Nearby native module is not installed");
     await nativeModule.start(serviceId, localName);
@@ -47,6 +53,11 @@ export const NearbyNative = {
 
   async stop(): Promise<void> {
     await nativeModule?.stop();
+  },
+
+  async openBatterySettings(): Promise<void> {
+    if (!nativeModule) throw new Error("SSA Nearby native module is not installed");
+    await nativeModule.openBatterySettings();
   },
 
   async acceptConnection(endpointId: string): Promise<void> {

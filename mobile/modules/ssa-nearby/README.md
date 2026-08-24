@@ -17,3 +17,9 @@ The app requests Bluetooth scan/connect/advertise permissions on Android 12+, ne
 Install the development build on two physical Android phones. Turn off mobile data and Wi-Fi internet access while leaving the Wi-Fi and Bluetooth radios enabled. Start discovery on both devices, accept the connection request on both sides, confirm the peer appears as connected, and exchange the test announce/payload. Repeat after stopping and restarting the app. Record device model, Android version, discovery time, connection result, payload result, and battery impact.
 
 The Linux development environment can type-check the bridge and run protocol tests, but it cannot compile the Android native module or validate radio behavior. A physical Android build is required before claiming Phase 1 connectivity.
+
+## Foreground service and recovery
+
+On Android, `start(serviceId, localName)` starts the Nearby transport through the user-visible `SsaNearbyForegroundService`. The service stores its configuration in private app preferences, posts an ongoing low-importance notification, uses sticky restart behavior, re-issues itself after the launcher task is removed, and restores the last explicit configuration after device boot. Native events are buffered while the JavaScript listener is unavailable and drained when the app attaches again.
+
+The bridge also exposes `attach()` and `openBatterySettings()`. The latter opens Android’s battery-optimization settings; SSA does not silently request an exemption or change device policy. Permissions, Bluetooth/Wi-Fi radio state, notification permission, battery saver, force-stop, process kill, reboot, and OEM background restrictions must be tested on every target device. The service is designed for emergency persistence, but Android and OEM policies mean uninterrupted operation cannot be guaranteed.

@@ -45,3 +45,11 @@ The current implementation is a best-effort relay path. It does not yet provide 
 ### Physical multi-hop test
 
 Use three Android phones A, B, and C. Keep A and C outside direct radio range while keeping B within range of both. Start SSA discovery on all three phones, approve the connection requests, and verify that A learns C’s authenticated announcement through B. Send an encrypted packet from A to C, confirm that B reports a relay event without displaying plaintext, then confirm that C decrypts and displays the message. Repeat with B temporarily disconnected to verify expiry and retry behavior.
+
+## Android emergency-mode persistence
+
+SSA emergency mode now runs through a user-visible Android foreground service. The service keeps the Nearby transport alive after the UI task is backgrounded, persists the service ID and local device name, restores discovery after process recreation, uses `START_STICKY`, retries after the launcher task is removed, and can recover after device boot when the user previously enabled the service.
+
+The service posts an ongoing low-importance notification, does not toggle Bluetooth or Wi-Fi automatically, and exposes a battery-settings action so the operator can review OEM power restrictions. The user must grant the requested permissions and keep the radios enabled. Android and device manufacturers can still stop or restrict background work, so no mobile application can honestly guarantee uninterrupted operation under force-stop, revoked permissions, battery exhaustion, radio failure, or OEM policy.
+
+Before production use, test on each target Android version and OEM profile: background the app, swipe away the task, lock the phone, disconnect and restore Bluetooth/Wi-Fi, reboot the device, revoke notification permission, and simulate process kill. Record whether the persistent notification, Nearby discovery, relay queue, and reconnection state recover as expected.
