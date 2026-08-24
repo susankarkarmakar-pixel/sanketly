@@ -1,9 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import type { OutboxRecord } from "@sanketly/domain";
+import { MAX_RELAY_QUEUE_ITEMS, type RelayQueueRecord } from "@sanketly/protocol";
 import { generateMeshIdentity, type MeshIdentity } from "@sanketly/mesh-crypto";
 
 const OUTBOX_KEY = "sanketly.outbox.v1";
+const RELAY_QUEUE_KEY = "sanketly.relay-queue.v1";
 const MESH_IDENTITY_KEY = "sanketly.mesh-identity.v1";
 
 export function createId(prefix: string): string {
@@ -55,6 +57,44 @@ export async function loadOutbox(): Promise<OutboxRecord[]> {
 
 export async function saveOutbox(records: OutboxRecord[]): Promise<void> {
   await AsyncStorage.setItem(OUTBOX_KEY, JSON.stringify(records));
+}
+
+async function loadRelayQueue(): Promise<RelayQueueRecord[]> {
+  const raw = await AsyncStorage.getItem(RELAY_QUEUE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as RelayQueueRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveRelayQueue(records: RelayQueueRecord[]): Promise<void> {
+  await AsyncStorage.setItem(RELAY_QUEUE_KEY, JSON.stringify(records.slice(-MAX_RELAY_QUEUE_ITEMS)));
+}
+
+export class MobileRelayQueueStore {
+  async list(): Promise<RelayQueueRecord[]> {
+    return loadRelayQueue();
+  }
+
+  async upsert(record: RelayQueueRecord): Promise<void> {
+    const records = await loadRelayQueue();
+    const index = records.findIndex((entry) => entry.queueId === record.queueId);
+    if (index === -1) records.push(record);
+    else records[index] = record;
+    await saveRelayQueue(records);
+  }
+
+  async remove(queueId: string): Promise<void> {
+    const records = await loadRelayQueue();
+    await saveRelayQueue(records.filter((entry) => entry.queueId !== queueId));
+  }
+
+  async clear(): Promise<void> {
+    await AsyncStorage.removeItem(RELAY_QUEUE_KEY);
+  }
 }
 
 export class MobileOutboxStore {

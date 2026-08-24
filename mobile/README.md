@@ -35,3 +35,13 @@ The user-facing app name is **Sanket Setu Alert (SSA)**. Internal `@sanketly/*` 
 ## SSA implementation direction
 
 Read [`../SSA_FINAL_PLAN.md`](../SSA_FINAL_PLAN.md) before adding production alert features. Phase 1 must prove two-device Android Nearby discovery, mutual connection acceptance and offline bytes exchange before structured alerts, multi-hop relay, Bridge Node uploads, or Block Office forwarding are enabled.
+
+## Multi-hop relay milestone
+
+SSA now includes bounded store-and-forward routing over connected Nearby/BLE peers. Message packets retain the original authenticated envelope while relays update only hop metadata, reject expired or exhausted packets, suppress duplicate packet IDs, avoid immediately sending a packet back over the incoming link, and prefer a verified destination before selecting another verified nearby relay. Packets with no currently available next hop are persisted in the mobile relay queue with an eight-attempt exponential backoff and a bounded queue size.
+
+The current implementation is a best-effort relay path. It does not yet provide end-to-end delivery acknowledgements, route discovery, congestion control, or a cryptographic ratchet. Those are required before a production emergency-service launch.
+
+### Physical multi-hop test
+
+Use three Android phones A, B, and C. Keep A and C outside direct radio range while keeping B within range of both. Start SSA discovery on all three phones, approve the connection requests, and verify that A learns C’s authenticated announcement through B. Send an encrypted packet from A to C, confirm that B reports a relay event without displaying plaintext, then confirm that C decrypts and displays the message. Repeat with B temporarily disconnected to verify expiry and retry behavior.

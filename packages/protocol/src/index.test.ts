@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DeduplicationCache,
   canRelay,
+  nextRelayAttemptAt,
+  selectNextHop,
+  shouldRelayPacket,
   chunkBleFrame,
   reassembleBleChunks,
   createMessagePacket,
@@ -31,6 +34,51 @@ describe("Sanketly mesh protocol", () => {
     expect(decodePacket(encodePacket(packet))).toEqual(packet);
   });
 
+  it("selects the destination first and avoids the previous hop for relays", () => {
+    const packet = createMessagePacket({
+      packetId: "packet-route",
+      messageId: "message-route",
+      senderId: "alice",
+      recipientId: "dina",
+      conversationId: "dm:dina",
+      ciphertext: "sealed-content",
+      signature: "signature",
+      cryptoVersion: 1,
+      senderSigningPublicKey: "alice-signing-key",
+      senderEncryptionPublicKey: "alice-encryption-key",
+      hopLimit: 3,
+    });
+    const peers = [
+      { peerId: "bob", linkId: "link-b", lastSeenAt: 1000, verified: true, connectionState: "connected" as const, transport: "nearby" as const },
+      { peerId: "dina", linkId: "link-d", lastSeenAt: 1000, verified: true, connectionState: "connected" as const, transport: "nearby" as const },
+      { peerId: "alice", linkId: "link-a", lastSeenAt: 1000, verified: true, connectionState: "connected" as const, transport: "nearby" as const },
+    ];
+    expect(selectNextHop(packet, peers, { localPeerId: "alice", now: 1000 })?.peerId).toBe("dina");
+    const relayed = relayPacket(packet, "bob", 1000);
+    expect(selectNextHop(relayed, peers, { localPeerId: "charlie", excludeLinkId: "link-b", now: 1000 })?.peerId).toBe("dina");
+    expect(shouldRelayPacket(relayed, "charlie", 1000)).toBe(true);
+  });
+
+  it("requires authenticated relay peers for encrypted messages", () => {
+    const packet = createMessagePacket({
+      packetId: "packet-auth-route",
+      messageId: "message-auth-route",
+      senderId: "alice",
+      recipientId: "dina",
+      conversationId: "dm:dina",
+      ciphertext: "sealed-content",
+      signature: "signature",
+      cryptoVersion: 1,
+      senderSigningPublicKey: "alice-signing-key",
+      senderEncryptionPublicKey: "alice-encryption-key",
+      hopLimit: 3,
+    });
+    const peer = { peerId: "relay", linkId: "link-r", lastSeenAt: 1000, verified: false, connectionState: "connected" as const, transport: "nearby" as const };
+    expect(selectNextHop(packet, [peer], { localPeerId: "alice", now: 1000 })).toBeNull();
+    expect(nextRelayAttemptAt(0, 1000)).toBe(3000);
+    expect(nextRelayAttemptAt(3, 1000)).toBe(17000);
+  });
+
   it("increments the hop count and refuses packets at the relay limit", () => {
     const packet = createMessagePacket({
       packetId: "packet-1",
@@ -46,10 +94,10 @@ describe("Sanketly mesh protocol", () => {
       hopLimit: 1,
     });
 
-    const relayed = relayPacket(packet);
+    const relayed = relayPacket(packet, "relay-1", 1000);
     expect(relayed.hopCount).toBe(1);
     expect(canRelay(relayed)).toBe(false);
-    expect(() => relayPacket(relayed)).toThrow("Packet cannot be relayed");
+    expect(() => relayPacket(relayed, "relay-2", 1000)).toThrow("Packet cannot be relayed");
   });
 
   it("suppresses duplicate packet identifiers and evicts old entries", () => {

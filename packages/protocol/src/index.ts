@@ -2,6 +2,9 @@ export const PROTOCOL_VERSION = 1;
 export const FRAME_MAGIC = new Uint8Array([0x53, 0x4b]);
 export const DEFAULT_HOP_LIMIT = 3;
 export const MAX_PACKET_BYTES = 4096;
+export const MAX_RELAY_QUEUE_ITEMS = 512;
+export const MAX_RELAY_ATTEMPTS = 8;
+export const RELAY_RETRY_BASE_MS = 2_000;
 export const NEARBY_SERVICE_ID = "in.sanketsetu.alert.nearby.v1";
 
 /** BLE identifiers are fixed across iOS and Android for cross-platform discovery. */
@@ -99,6 +102,8 @@ export interface MeshPacket {
   expiresAt: number;
   hopLimit: number;
   hopCount: number;
+  /** The immediate sender of this copy; used to prevent bouncing back. */
+  lastHopId?: string;
   ciphertext?: string;
   payload?: string;
   signature?: string;
@@ -141,6 +146,41 @@ export interface TransportStatus {
 export interface TransportMessage {
   message: MessageEnvelope;
   packet: MeshPacket;
+}
+
+export interface RelayQueueRecord {
+  queueId: string;
+  packet: MeshPacket;
+  attempts: number;
+  nextAttemptAt: number;
+  enqueuedAt: number;
+  lastError?: string;
+}
+
+export interface RouteCandidate {
+  peer: MeshPeer;
+  score: number;
+}
+
+export function selectNextHop(packet: MeshPacket, peers: MeshPeer[], options: { localPeerId?: string; excludeLinkId?: string; now?: number } = {}): MeshPeer | null {
+  if (!canRelay(packet, options.now)) return null;
+  const localPeerId = options.localPeerId;
+  const now = options.now ?? Date.now();
+  const candidates: RouteCandidate[] = peers
+    .filter((peer) => peer.connectionState === "connected" && Boolean(peer.linkId))
+    .filter((peer) => packet.type === "announce" || peer.verified)
+    .filter((peer) => peer.linkId !== options.excludeLinkId)
+    .filter((peer) => peer.peerId !== localPeerId && peer.peerId !== packet.senderId && peer.peerId !== packet.lastHopId)
+    .map((peer) => {
+      const ageSeconds = Math.max(0, (now - peer.lastSeenAt) / 1000);
+      const freshness = Math.max(0, 30 - Math.min(30, ageSeconds));
+      const destinationBonus = packet.recipientId && peer.peerId === packet.recipientId ? 1_000 : 0;
+      const verifiedBonus = peer.verified ? 100 : 0;
+      const transportBonus = peer.transport === "nearby" ? 30 : peer.transport === "ble" ? 15 : 0;
+      return { peer, score: destinationBonus + verifiedBonus + transportBonus + freshness };
+    })
+    .sort((left, right) => right.score - left.score || left.peer.peerId.localeCompare(right.peer.peerId));
+  return candidates[0]?.peer ?? null;
 }
 
 function stableValue(value: unknown): unknown {
@@ -210,6 +250,7 @@ export function isMeshPacket(value: unknown): value is MeshPacket {
     typeof packet.expiresAt === "number" &&
     typeof packet.hopLimit === "number" &&
     typeof packet.hopCount === "number" &&
+    (packet.lastHopId === undefined || typeof packet.lastHopId === "string") &&
     packet.hopLimit >= 0 &&
     packet.hopCount >= 0 &&
     packet.hopCount <= packet.hopLimit &&
@@ -230,9 +271,18 @@ export function canRelay(packet: MeshPacket, now = Date.now()): boolean {
   return packet.expiresAt > now && packet.hopCount < packet.hopLimit;
 }
 
-export function relayPacket(packet: MeshPacket): MeshPacket {
-  if (!canRelay(packet)) throw new Error("Packet cannot be relayed");
-  return { ...packet, hopCount: packet.hopCount + 1, packetId: `${packet.packetId}:${packet.hopCount + 1}` };
+export function relayPacket(packet: MeshPacket, relayPeerId: string, now = Date.now()): MeshPacket {
+  if (!relayPeerId || !canRelay(packet, now)) throw new Error("Packet cannot be relayed");
+  return { ...packet, hopCount: packet.hopCount + 1, lastHopId: relayPeerId };
+}
+
+export function nextRelayAttemptAt(attempts: number, now = Date.now()): number {
+  const boundedAttempts = Math.max(0, Math.min(attempts, MAX_RELAY_ATTEMPTS));
+  return now + RELAY_RETRY_BASE_MS * (2 ** boundedAttempts);
+}
+
+export function shouldRelayPacket(packet: MeshPacket, localPeerId: string, now = Date.now()): boolean {
+  return Boolean(localPeerId) && packet.senderId !== localPeerId && packet.recipientId !== localPeerId && canRelay(packet, now);
 }
 
 export class DeduplicationCache {
@@ -274,6 +324,7 @@ export function createAnnouncePacket(input: {
   payload: string;
   now?: number;
   ttlMs?: number;
+  hopLimit?: number;
 }): MeshPacket {
   const now = input.now ?? Date.now();
   return {
@@ -284,7 +335,7 @@ export function createAnnouncePacket(input: {
     payload: input.payload,
     createdAt: now,
     expiresAt: now + (input.ttlMs ?? 60_000),
-    hopLimit: 0,
+    hopLimit: input.hopLimit ?? 2,
     hopCount: 0,
   };
 }
@@ -320,6 +371,7 @@ export function createMessagePacket(input: {
     expiresAt: now + (input.ttlMs ?? 7 * 24 * 60 * 60 * 1000),
     hopLimit: input.hopLimit ?? DEFAULT_HOP_LIMIT,
     hopCount: 0,
+    lastHopId: input.senderId,
     ciphertext: input.ciphertext,
     signature: input.signature,
   };

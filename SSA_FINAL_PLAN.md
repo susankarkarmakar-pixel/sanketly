@@ -202,3 +202,11 @@ This checkpoint is **not yet a physical-device acceptance result**. The next req
 The Android Phase 1 skeleton is now being implemented through a local Expo native module named `@sanketly/nearby-native`. It uses Google Play Services Nearby Connections with the `P2P_CLUSTER` strategy and exposes discovery, advertising, connection approval, byte payload send/receive, permission checks and disabled-radio recovery. The existing provider routes Android through this module and keeps the earlier raw-BLE transport as a separate fallback.
 
 Before Phase 2 work begins, the team must create an Android development build and complete the physical two-device test. The sandbox can validate TypeScript, protocol tests, Expo metadata and repository builds, but it has no Android SDK, Gradle installation or attached physical device, so native compilation and radio performance remain explicit acceptance gates.
+
+## 14. Multi-hop relay implementation checkpoint
+
+The SSA mobile provider now implements bounded store-and-forward routing. Each packet retains its original authenticated message envelope; relay nodes update only `hopCount` and `lastHopId`. A node refuses expired or hop-exhausted packets, remembers packet IDs to suppress duplicates, avoids immediately returning a packet to the incoming link or previous hop, prefers a verified destination, and otherwise selects the freshest verified connected Nearby/BLE peer.
+
+Packets without a usable next hop are persisted in `sanketly.relay-queue.v1`. The queue is capped at 512 records and retries with exponential backoff for at most eight attempts. The route layer intentionally does not claim guaranteed delivery: end-to-end acknowledgement, route discovery, congestion control, and cryptographic ratcheting remain later release gates.
+
+The required acceptance test uses three physical Android devices: A and C must be outside direct range while B remains within range of both. A, B and C must approve Nearby connections, A must learn C’s authenticated announcement through B, and an encrypted A-to-C message must be relayed by B without B decrypting it. The test must also cover duplicate packet injection, a disconnected relay, retry backoff, expiry and app restart.
