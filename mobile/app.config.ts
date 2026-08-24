@@ -6,6 +6,8 @@ const config: ExpoConfig = {
   version: "0.1.0",
   orientation: "portrait",
   userInterfaceStyle: "automatic",
+  // Use the legacy architecture for the first hardware pilot while custom native modules are validated.
+  newArchEnabled: false,
   scheme: "ssa",
   icon: "./assets/ssa-icon.png",
   ios: {
