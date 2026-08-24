@@ -1,9 +1,11 @@
 import type { ExpoConfig } from "expo/config";
 
+const androidPackage = process.env.SSA_ANDROID_PACKAGE ?? "in.sanketsetu.alert";
+
 const config: ExpoConfig = {
   name: "Sanket Setu Alert (SSA)",
   slug: "sanket-setu-alert",
-  version: "0.1.0",
+  version: process.env.SSA_VERSION ?? "0.1.1",
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   // Use the legacy architecture for the first hardware pilot while custom native modules are validated.
@@ -20,7 +22,8 @@ const config: ExpoConfig = {
     },
   },
   android: {
-    package: "in.sanketsetu.alert",
+    package: androidPackage,
+    versionCode: 2,
     permissions: [
       "BLUETOOTH_SCAN",
       "BLUETOOTH_ADVERTISE",
