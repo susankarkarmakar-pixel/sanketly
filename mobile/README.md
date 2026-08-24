@@ -1,55 +1,63 @@
-# Sanket Setu Alert (SSA) Mobile Reference Shell
+# Sanket Setu Alert (SSA) React Native client
 
-This package is the current React Native/Expo reference shell for Sanket Setu Alert’s offline-first mobile client. It contains the secure local identity store, durable encrypted outbox, shared protocol/domain package consumption, the experimental raw-BLE native boundary, and the initial SSA user-facing screens.
+This package contains the active **React Native/Expo** client for Sanket Setu Alert. React Native is the chosen implementation because the repository already has an Expo Router shell, shared TypeScript protocol and cryptography packages, and a local Android Nearby Connections module. A separate Flutter client is intentionally not maintained in parallel; a Flutter port can reuse the shared packet contract later.
 
-## Run the reference shell
+## Run the JavaScript client
 
 From the repository root:
 
 ```bash
 pnpm install
 pnpm --filter @sanketly/mobile start
+pnpm --filter @sanketly/mobile run typecheck
+pnpm --filter @sanketly/mobile test
 ```
 
-For a native development build, use a machine with Android Studio or Xcode configured:
+A native development build requires Android Studio/SDK or Xcode and a physical device or emulator:
 
 ```bash
 pnpm --filter @sanketly/mobile android
 pnpm --filter @sanketly/mobile ios
 ```
 
-## Current status
+The repository sandbox can validate TypeScript and protocol behavior, but it does not contain Android SDK, Gradle, adb, or a radio-capable device. Therefore Nearby discovery, foreground-service recovery, OEM battery behavior, and multi-hop radio range remain physical-device acceptance tests.
 
-Messages are sealed with libsodium using the recipient’s public encryption key, authenticated with the sender’s Ed25519 signing key, and persisted as ciphertext plus signed metadata in the durable outbox. The experimental native module performs raw BLE scanning, advertising and GATT framing. For the SSA pilot, the next primary transport is a Kotlin + Jetpack Compose Android client using Google Nearby Connections with `P2P_CLUSTER`; raw BLE should remain isolated until the Nearby proof-of-connectivity is stable.
+## Source structure
 
-The user-facing app name is **Sanket Setu Alert (SSA)**. Internal `@sanketly/*` package names and the provider/module symbols remain temporarily unchanged to reduce migration risk.
+| Area | Responsibility |
+|---|---|
+| `app/` | Thin Expo Router screens: dashboard, alert compose/list/detail, network, settings, onboarding, and peer chat |
+| `components/ssa/` | Reusable status pills, buttons, cards, alert tiles, priority chips, and peer rows |
+| `features/alerts/` | Structured-alert display and sorting helpers |
+| `features/network/` | Transport-state and verified-peer helpers |
+| `features/settings/` | Settings sections and persistence-boundary copy |
+| `constants/ssa.ts` | Bengali-first labels, alert taxonomy, palette, and priorities |
+| `lib/sanketly-provider.tsx` | Identity loading, native transport event handling, UI state, alert/message creation |
+| `lib/mesh/mesh-engine.ts` | Transport-independent ingress, destination decryption, route selection, relay forwarding, queueing, and retry draining |
+| `lib/storage.ts` | SecureStore identity and AsyncStorage outbox, relay queue, alert records, and relay events |
+| `modules/ssa-nearby/` | Primary Android Google Nearby Connections `P2P_CLUSTER` bridge and foreground service |
+| `modules/sanketly-mesh/` | Experimental raw BLE fallback; not the primary SSA pilot transport |
 
-## Package boundaries
+The fuller repository map and execution diagram are in [`../SSA_REACT_NATIVE_CODEBASE.md`](../SSA_REACT_NATIVE_CODEBASE.md). The dashboard wireframe specification is [`../SSA_DASHBOARD_WIREFRAME_SPEC.md`](../SSA_DASHBOARD_WIREFRAME_SPEC.md).
 
-- `@sanketly/protocol` defines versioned packet framing, TTL/hop rules, relay checks, message envelopes, BLE frame constants, and bounded deduplication.
-- `@sanketly/domain` defines conversations, outbox records, transport adapters, and delivery-state transitions.
-- `@sanketly/mesh-crypto` provides libsodium sealed-box encryption, Ed25519 signatures, metadata binding, and decrypt-time verification.
-- `@sanketly/mesh-native` exposes the experimental Swift/Kotlin raw-BLE boundary to TypeScript.
-- `mobile/lib/sanketly-provider.tsx` owns local identity, mesh status, conversations, and encrypted outbox actions.
+## Alert and message flow
 
-## SSA implementation direction
+A structured alert contains a schema version, type, priority, title, description, village, optional ward/location, creation time, expiry time, and alert ID. The provider serializes the complete structure into the encrypted message body. Libsodium seals that body to the recipient’s public encryption key and signs the ciphertext together with the authenticated metadata. A relay therefore forwards opaque bytes and cannot modify an alert without causing recipient signature verification to fail.
 
-Read [`../SSA_FINAL_PLAN.md`](../SSA_FINAL_PLAN.md) before adding production alert features. Phase 1 must prove two-device Android Nearby discovery, mutual connection acceptance and offline bytes exchange before structured alerts, multi-hop relay, Bridge Node uploads, or Block Office forwarding are enabled.
+The local UI uses honest delivery vocabulary. `queued` means the encrypted packet is durably stored for another attempt; `relaying` means a next hop was selected; `delivered` requires recipient-side processing evidence; `expired` means the packet’s deadline passed; and `failed` means retry policy ended. A native API accepting a byte payload is not itself treated as delivery confirmation.
 
-## Multi-hop relay milestone
+## Native transport and emergency persistence
 
-SSA now includes bounded store-and-forward routing over connected Nearby/BLE peers. Message packets retain the original authenticated envelope while relays update only hop metadata, reject expired or exhausted packets, suppress duplicate packet IDs, avoid immediately sending a packet back over the incoming link, and prefer a verified destination before selecting another verified nearby relay. Packets with no currently available next hop are persisted in the mobile relay queue with an eight-attempt exponential backoff and a bounded queue size.
+On Android, SSA uses Google Nearby Connections with `P2P_CLUSTER` as the primary transport. Bluetooth, nearby Wi-Fi, notification, and legacy location permissions are requested according to Android version. The foreground service uses a persistent notification, sticky restart, task-removal recovery, boot-time recovery configuration, and a JavaScript event buffer.
 
-The current implementation is a best-effort relay path. It does not yet provide end-to-end delivery acknowledgements, route discovery, congestion control, or a cryptographic ratchet. Those are required before a production emergency-service launch.
+This is **best effort**, not an uninterrupted-service guarantee. Android force-stop, revoked permissions, battery exhaustion, radio failure, and OEM power-management policies can still stop or restrict the app. Operators should review the battery settings CTA and keep radios enabled during a pilot.
 
-### Physical multi-hop test
+## Three-device acceptance test
 
-Use three Android phones A, B, and C. Keep A and C outside direct radio range while keeping B within range of both. Start SSA discovery on all three phones, approve the connection requests, and verify that A learns C’s authenticated announcement through B. Send an encrypted packet from A to C, confirm that B reports a relay event without displaying plaintext, then confirm that C decrypts and displays the message. Repeat with B temporarily disconnected to verify expiry and retry behavior.
+Use Android devices A, B, and C. Keep A and C outside direct radio range while B remains within range of both. Start discovery on all three devices and approve only expected nearby requests. Verify that A learns C’s signed announcement through B, then send an encrypted alert from A to C. B should report a forwarding event without showing the alert plaintext, and C should display the structured alert after signature verification and decryption. Disconnect B and confirm that queued packets remain durable, retry with backoff, and expire rather than being reported as delivered.
 
-## Android emergency-mode persistence
+The same test should be repeated after backgrounding, screen lock, task removal, process recreation, reboot, permission revocation, and battery-saver changes on each target Android OEM.
 
-SSA emergency mode now runs through a user-visible Android foreground service. The service keeps the Nearby transport alive after the UI task is backgrounded, persists the service ID and local device name, restores discovery after process recreation, uses `START_STICKY`, retries after the launcher task is removed, and can recover after device boot when the user previously enabled the service.
+## Persistence roadmap
 
-The service posts an ongoing low-importance notification, does not toggle Bluetooth or Wi-Fi automatically, and exposes a battery-settings action so the operator can review OEM power restrictions. The user must grant the requested permissions and keep the radios enabled. Android and device manufacturers can still stop or restrict background work, so no mobile application can honestly guarantee uninterrupted operation under force-stop, revoked permissions, battery exhaustion, radio failure, or OEM policy.
-
-Before production use, test on each target Android version and OEM profile: background the app, swipe away the task, lock the phone, disconnect and restore Bluetooth/Wi-Fi, reboot the device, revoke notification permission, and simulate process kill. Record whether the persistent notification, Nearby discovery, relay queue, and reconnection state recover as expected.
+The current Expo-compatible prototype uses AsyncStorage for outbox, relay queue, alert records, and relay events, with SecureStore for private identity material. This keeps the JavaScript validation path light but is not the final high-volume emergency datastore. Before field deployment, migrate these repositories to an encrypted SQLite/Room-compatible implementation with schema migrations, crash-safe transactions, bounded event retention, and explicit recovery tests.

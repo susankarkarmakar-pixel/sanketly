@@ -5,8 +5,8 @@ import { SanketlyProvider } from "@/lib/sanketly-provider";
 export default function RootLayout() {
   return (
     <SanketlyProvider>
-      <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false }} />
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
     </SanketlyProvider>
   );
 }

@@ -1,11 +1,15 @@
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import type { PropsWithChildren } from "react";
 import { StyleSheet, View, type ViewProps } from "react-native";
 
-export function ScreenContainer({ children, ...props }: PropsWithChildren<ViewProps>) {
+export interface ScreenContainerProps extends ViewProps {
+  edges?: Edge[];
+}
+
+export function ScreenContainer({ children, edges = ["top", "left", "right"], ...props }: PropsWithChildren<ScreenContainerProps>) {
   return (
     <View style={styles.outer} {...props}>
-      <SafeAreaView style={styles.safe}>{children}</SafeAreaView>
+      <SafeAreaView edges={edges} style={styles.safe}>{children}</SafeAreaView>
     </View>
   );
 }

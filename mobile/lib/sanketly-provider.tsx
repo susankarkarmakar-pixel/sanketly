@@ -1,11 +1,12 @@
-import { decryptMeshPacket, derivePeerId, encryptMeshMessage, envelopeToMeshPacket, type DecryptedMeshMessage, type MeshIdentity } from "@sanketly/mesh-crypto";
-import type { OutboxRecord } from "@sanketly/domain";
-import { canRelay, createAnnouncePacket, decodePacket, encodePacket, MAX_RELAY_ATTEMPTS, NEARBY_SERVICE_ID, nextRelayAttemptAt, relayPacket, selectNextHop, shouldRelayPacket, type MeshPacket, type MeshPeer, type RelayQueueRecord, type TransportStatus } from "@sanketly/protocol";
+import { derivePeerId, encryptMeshMessage, envelopeToMeshPacket, type DecryptedMeshMessage, type MeshIdentity } from "@sanketly/mesh-crypto";
+import { parseStructuredAlert, serializeStructuredAlert, type AlertRecord, type OutboxRecord, type StructuredAlert } from "@sanketly/domain";
+import { createAnnouncePacket, decodePacket, encodePacket, NEARBY_SERVICE_ID, type MeshPacket, type MeshPeer, type TransportStatus } from "@sanketly/protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { PermissionsAndroid, Platform } from "react-native";
 import { MeshNative } from "@/modules/sanketly-mesh/src";
 import { NearbyNative, type NearbyEvent } from "@/modules/ssa-nearby/src";
-import { createId, loadMeshIdentity, MobileOutboxStore, MobileRelayQueueStore } from "./storage";
+import { createId, loadMeshIdentity, MobileAlertStore, MobileOutboxStore, MobileRelayEventStore, MobileRelayQueueStore } from "./storage";
+import { MeshEngine } from "./mesh/mesh-engine";
 
 export interface LocalMessage {
   id: string;
@@ -13,6 +14,7 @@ export interface LocalMessage {
   body: string;
   createdAt: number;
   deliveryState: "queued" | "relaying" | "delivered" | "failed";
+  alert?: StructuredAlert;
 }
 
 export interface PendingNearbyRequest {
@@ -27,12 +29,14 @@ interface SanketlyContextValue {
   peers: MeshPeer[];
   pendingNearbyRequests: PendingNearbyRequest[];
   messages: Record<string, LocalMessage[]>;
+  alerts: AlertRecord[];
   startMesh(): Promise<void>;
   stopMesh(): Promise<void>;
   acceptNearbyRequest(endpointId: string): Promise<void>;
   rejectNearbyRequest(endpointId: string): Promise<void>;
   openBatterySettings(): Promise<void>;
-  queueMessage(peerId: string, body: string): Promise<LocalMessage>;
+  queueMessage(peerId: string, body: string, options?: { displayBody?: string; alert?: StructuredAlert }): Promise<LocalMessage>;
+  queueAlert(peerId: string, alert: StructuredAlert): Promise<LocalMessage>;
 }
 
 const initialStatus: TransportStatus = {
@@ -44,6 +48,8 @@ const initialStatus: TransportStatus = {
 const SanketlyContext = createContext<SanketlyContextValue | null>(null);
 const outbox = new MobileOutboxStore();
 const relayQueue = new MobileRelayQueueStore();
+const alertStore = new MobileAlertStore();
+const relayEventStore = new MobileRelayEventStore();
 
 export function SanketlyProvider({ children }: PropsWithChildren) {
   const [identity, setIdentity] = useState<MeshIdentity | null>(null);
@@ -51,10 +57,11 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
   const [peers, setPeers] = useState<MeshPeer[]>([]);
   const [pendingNearbyRequests, setPendingNearbyRequests] = useState<PendingNearbyRequest[]>([]);
   const [messages, setMessages] = useState<Record<string, LocalMessage[]>>({});
-  const seenPacketIds = useRef(new Set<string>());
+  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const identityRef = useRef<MeshIdentity | null>(null);
   const peersRef = useRef<MeshPeer[]>([]);
   const announceFrameRef = useRef<number[] | null>(null);
+  const meshEngineRef = useRef<MeshEngine | null>(null);
 
   useEffect(() => {
     identityRef.current = identity;
@@ -65,8 +72,47 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
   }, [peers]);
 
   useEffect(() => {
-    void loadMeshIdentity().then(setIdentity).catch((error: unknown) => {
-      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to create secure SSA identity" });
+    if (!identity) {
+      meshEngineRef.current = null;
+      return;
+    }
+    meshEngineRef.current = new MeshEngine({
+      identity,
+      relayStore: relayQueue,
+      send: async (linkId, bytes) => {
+        const peer = peersRef.current.find((candidate) => candidate.linkId === linkId);
+        if (!peer) throw new Error("Mesh route is no longer connected");
+        await sendPacketToPeer(peer, decodePacket(Uint8Array.from(bytes)));
+      },
+      events: {
+        onMessage: (message) => { void handleDecryptedMessage(message); },
+        onPacket: (packet, linkId) => {
+          if (packet.type === "announce") handleAnnounce(linkId, packet);
+        },
+        onRelay: (packet, viaPeer) => {
+          void relayEventStore.append({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "forwarded", peerId: viaPeer.peerId, createdAt: Date.now() });
+          setMeshStatus((current) => ({ ...current, detail: `Relaying through ${viaPeer.displayName ?? "nearby peer"}` }));
+        },
+        onQueued: (packet) => {
+          void relayEventStore.append({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "queued", createdAt: Date.now() });
+          setMeshStatus((current) => ({ ...current, detail: "Packet queued for the next available relay" }));
+        },
+        onError: (error) => {
+          setMeshStatus({ kind: "mesh", state: "error", detail: error.message });
+        },
+      },
+    });
+    return () => {
+      meshEngineRef.current = null;
+    };
+  }, [identity]);
+
+  useEffect(() => {
+    void Promise.all([loadMeshIdentity(), alertStore.list()]).then(([loadedIdentity, loadedAlerts]) => {
+      setIdentity(loadedIdentity);
+      setAlerts(loadedAlerts);
+    }).catch((error: unknown) => {
+      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to load SSA local state" });
     });
 
     const handleNearbyEvent = (event: NearbyEvent) => {
@@ -138,25 +184,9 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  async function handleIncomingFrame(currentIdentity: MeshIdentity, linkId: string, bytes: number[]): Promise<void> {
-    try {
-      const packet = decodePacket(Uint8Array.from(bytes));
-      if (!seenPacketIds.current.add(packet.packetId)) return;
-      if (packet.type === "announce") {
-        handleAnnounce(linkId, packet);
-        await forwardPacket(packet, linkId, currentIdentity);
-        return;
-      }
-      if (packet.type !== "message") return;
-      if (packet.recipientId !== currentIdentity.peerId) {
-        await forwardPacket(packet, linkId, currentIdentity);
-        return;
-      }
-      const decrypted = await decryptMeshPacket({ identity: currentIdentity, packet });
-      handleDecryptedMessage(decrypted);
-    } catch (error) {
-      setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Rejected invalid SSA transport frame" });
-    }
+  async function handleIncomingFrame(_currentIdentity: MeshIdentity, linkId: string, bytes: number[]): Promise<void> {
+    const engine = meshEngineRef.current;
+    if (engine) await engine.receive(linkId, bytes, peersRef.current);
   }
 
   function handleAnnounce(linkId: string, packet: MeshPacket): void {
@@ -189,17 +219,22 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     }
   }
 
-  function handleDecryptedMessage(message: DecryptedMeshMessage): void {
-    setMessages((current) => ({
-      ...current,
-      [message.senderId]: [...(current[message.senderId] ?? []), {
-        id: message.messageId,
-        peerId: message.senderId,
-        body: message.body,
-        createdAt: message.createdAt,
-        deliveryState: "delivered",
-      }],
-    }));
+  async function handleDecryptedMessage(message: DecryptedMeshMessage): Promise<void> {
+    const alert = parseStructuredAlert(message.body) ?? undefined;
+    const localMessage: LocalMessage = {
+      id: message.messageId,
+      peerId: message.senderId,
+      body: alert ? `${alert.title} · ${alert.village}` : message.body,
+      createdAt: message.createdAt,
+      deliveryState: "delivered",
+      alert,
+    };
+    setMessages((current) => ({ ...current, [message.senderId]: [...(current[message.senderId] ?? []), localMessage] }));
+    if (alert) {
+      const record: AlertRecord = { alert, messageId: message.messageId, deliveryState: "delivered", updatedAt: Date.now() };
+      await alertStore.upsert(record);
+      setAlerts((current) => [record, ...current.filter((entry) => entry.messageId !== record.messageId)]);
+    }
   }
 
   async function sendPacketToPeer(peer: MeshPeer, packet: MeshPacket): Promise<void> {
@@ -208,80 +243,6 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     if (peer.transport === "nearby") await NearbyNative.sendPayload(peer.linkId, bytes);
     else await MeshNative.sendFrame(peer.linkId, bytes);
   }
-
-  async function routeOrQueue(packet: MeshPacket, incomingLinkId?: string): Promise<boolean> {
-    const currentIdentity = identityRef.current;
-    if (!currentIdentity || !canRelay(packet)) return false;
-    const route = selectNextHop(packet, peersRef.current, { localPeerId: currentIdentity.peerId, excludeLinkId: incomingLinkId });
-    if (route) {
-      try {
-        await sendPacketToPeer(route, packet);
-        setMeshStatus((current) => ({ ...current, detail: `Relaying packet through ${route.displayName ?? "nearby peer"}` }));
-        return true;
-      } catch {
-        // Keep the packet durable when a selected link disappears during delivery.
-      }
-    }
-
-    const existing = (await relayQueue.list()).find((entry) => entry.packet.packetId === packet.packetId);
-    const attempts = existing?.attempts ?? 0;
-    if (attempts >= MAX_RELAY_ATTEMPTS || packet.expiresAt <= Date.now()) return false;
-    const record: RelayQueueRecord = {
-      queueId: `${packet.packetId}:${currentIdentity.peerId}`,
-      packet,
-      attempts,
-      nextAttemptAt: nextRelayAttemptAt(attempts),
-      enqueuedAt: existing?.enqueuedAt ?? Date.now(),
-      lastError: existing?.lastError,
-    };
-    await relayQueue.upsert(record);
-    setMeshStatus((current) => ({ ...current, detail: "Packet queued for the next available relay" }));
-    return false;
-  }
-
-  async function forwardPacket(packet: MeshPacket, incomingLinkId: string, currentIdentity: MeshIdentity): Promise<void> {
-    if (!shouldRelayPacket(packet, currentIdentity.peerId)) return;
-    const relayed = relayPacket(packet, currentIdentity.peerId);
-    await routeOrQueue(relayed, incomingLinkId);
-  }
-
-  async function drainRelayQueue(currentIdentity: MeshIdentity): Promise<void> {
-    const records = await relayQueue.list();
-    const now = Date.now();
-    for (const record of records) {
-      if (record.packet.expiresAt <= now || !canRelay(record.packet, now)) {
-        await relayQueue.remove(record.queueId);
-        continue;
-      }
-      if (record.nextAttemptAt > now) continue;
-      const route = selectNextHop(record.packet, peersRef.current, { localPeerId: currentIdentity.peerId, now });
-      if (!route) continue;
-      try {
-        await sendPacketToPeer(route, record.packet);
-        await relayQueue.remove(record.queueId);
-        setMeshStatus((current) => ({ ...current, detail: "Queued packet relayed" }));
-      } catch (error) {
-        const attempts = record.attempts + 1;
-        if (attempts >= MAX_RELAY_ATTEMPTS) {
-          await relayQueue.remove(record.queueId);
-        } else {
-          await relayQueue.upsert({
-            ...record,
-            attempts,
-            nextAttemptAt: nextRelayAttemptAt(attempts, now),
-            lastError: error instanceof Error ? error.message : "Relay link failed",
-          });
-        }
-      }
-    }
-  }
-
-  useEffect(() => {
-    if (!identity) return;
-    const timer = setInterval(() => void drainRelayQueue(identity), 3_000);
-    void drainRelayQueue(identity);
-    return () => clearInterval(timer);
-  }, [identity]);
 
   const startMesh = useCallback(async () => {
     if (!identity) {
@@ -364,7 +325,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     await NearbyNative.openBatterySettings();
   }, []);
 
-  const queueMessage = useCallback(async (targetPeerId: string, body: string) => {
+  const queueMessage = useCallback(async (targetPeerId: string, body: string, options?: { displayBody?: string; alert?: StructuredAlert }) => {
     if (!body.trim()) throw new Error("Message cannot be empty");
     if (!identity) throw new Error("Secure identity is still loading");
     const recipient = peers.find((peer) => peer.peerId === targetPeerId);
@@ -401,29 +362,43 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
       meshPacket,
     };
     await outbox.upsert(outboxRecord);
-    if (meshStatus.state === "ready" || meshStatus.state === "starting") {
-      await routeOrQueue(meshPacket);
+    const engine = meshEngineRef.current;
+    if (engine) {
+      await engine.send(meshPacket, peersRef.current);
     } else {
       await relayQueue.upsert({
         queueId: `${meshPacket.packetId}:${identity.peerId}`,
         packet: meshPacket,
         attempts: 0,
-        nextAttemptAt: nextRelayAttemptAt(0),
+        nextAttemptAt: now,
         enqueuedAt: now,
       });
     }
     const localMessage: LocalMessage = {
       id: messageId,
       peerId: targetPeerId,
-      body: body.trim(),
+      body: options?.displayBody ?? body.trim(),
       createdAt: now,
       deliveryState: "queued",
+      alert: options?.alert,
     };
     setMessages((current) => ({ ...current, [targetPeerId]: [...(current[targetPeerId] ?? []), localMessage] }));
+    if (options?.alert) {
+      const record: AlertRecord = { alert: options.alert, messageId, packetId: meshPacket.packetId, deliveryState: "queued", updatedAt: Date.now() };
+      await alertStore.upsert(record);
+      setAlerts((current) => [record, ...current.filter((entry) => entry.messageId !== record.messageId)]);
+    }
     return localMessage;
-  }, [identity, meshStatus.state, peers]);
+  }, [identity, peers]);
 
-  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage }), [identity, meshStatus, peers, pendingNearbyRequests, messages, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage]);
+  const queueAlert = useCallback(async (targetPeerId: string, alert: StructuredAlert) => {
+    return queueMessage(targetPeerId, serializeStructuredAlert(alert), {
+      displayBody: `${alert.title} · ${alert.village}`,
+      alert,
+    });
+  }, [queueMessage]);
+
+  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert }), [identity, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert]);
   return <SanketlyContext.Provider value={value}>{children}</SanketlyContext.Provider>;
 }
 

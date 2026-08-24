@@ -2,27 +2,37 @@
 
 **Tagline:** *Jokhon Shob Bondho, Setu Khola Thake* — “When everything else is closed, the bridge stays open.”
 
-An Android-first, offline-capable disaster alert and communication app for rural India, initially piloted in Gazole Development Block, Malda District, West Bengal. SSA is designed to let residents create structured emergency alerts and relay them phone-to-phone until an opportunistic bridge device can forward them to the Block Office.
+Sanket Setu Alert is an Android-first, offline-capable disaster alert and communication app for rural India, initially intended for a controlled pilot in Gazole Development Block, Malda District, West Bengal. SSA is designed to let residents create structured emergency alerts and relay them phone-to-phone when ordinary internet connectivity is unavailable.
 
-The repository currently contains the initial Expo/React Native reference shell, shared alert/protocol/domain packages, authenticated libsodium message support, and an experimental native BLE transport. SSA Phase 1 is now adding an Android Nearby Connections module using `P2P_CLUSTER`; the raw BLE module remains isolated as a research/fallback transport rather than the primary pilot path.
+## Current implementation
 
-## Mobile foundation
+The active mobile client is **React Native/Expo**, not a parallel Flutter codebase. This decision avoids maintaining two native transport implementations while the repository already has an Expo Router shell, shared TypeScript packages, a Google Nearby Connections module, and an Android emergency foreground-service boundary. A future Flutter port can reuse the shared packet and cryptography contracts.
 
-The existing `mobile/` package provides secure local identity storage, a durable outbox, mesh status UI, signed/encrypted packet primitives, native transport boundaries, and bounded multi-hop relay routing. The `@sanketly/mesh-crypto` package seals messages with libsodium, signs authenticated metadata with Ed25519, and verifies envelopes before decryption. The `@sanketly/nearby-native` module wraps Android Google Play Services Nearby Connections, including peer approval and byte-payload delivery. Internal `@sanketly/*` package names are retained temporarily to avoid a risky all-at-once namespace migration.
+The mobile client now includes a Bengali-first dashboard, structured alert composer and history/detail routes, network diagnostics, settings and onboarding screens, a reusable `MeshEngine`, persistent outbox/relay/alert/event records, and shared protocol tests. The full source map and execution flow are documented in [`SSA_REACT_NATIVE_CODEBASE.md`](./SSA_REACT_NATIVE_CODEBASE.md), with visual UX guidance in [`SSA_DASHBOARD_WIREFRAME_SPEC.md`](./SSA_DASHBOARD_WIREFRAME_SPEC.md).
 
-## Product direction
+## Security and mesh behavior
 
-SSA will be built in seven gates: two-device Nearby Connections proof of connectivity; structured alert categories and multi-hop relay; opportunistic Bridge Node uploads; Node.js/Express backend and Block Office forwarding; low-friction user verification; Bengali-first low-literacy UI and offline Gazole map; and a controlled 10–15-village pilot. The final roadmap is documented in [`SSA_FINAL_PLAN.md`](./SSA_FINAL_PLAN.md). Phase 1 now includes bounded multi-hop packet forwarding, duplicate suppression, TTL/hop-limit enforcement, route scoring, and a durable retry queue. It must pass on physical three-device Android testing before structured alerts or bridge delivery are enabled.
+The `@sanketly/mesh-crypto` package seals message bodies to the recipient’s public encryption key and signs authenticated metadata plus ciphertext with Ed25519. Structured alert fields are serialized into that encrypted body before transmission, so a relay can forward opaque packets but cannot alter alert content without invalidating recipient-side verification.
 
-The phrase “India’s first” is not treated as a verified public claim yet. The pilot should use evidence-based wording until an independent landscape review and legal/communications approval support a stronger claim.
+The primary Android transport is Google Nearby Connections `P2P_CLUSTER`, wrapped by `@sanketly/nearby-native`. The raw BLE module remains isolated as an experimental fallback. `@sanketly/protocol` provides framed packets, authenticated-peer route gating, direct-destination preference, duplicate suppression, TTL and hop limits, previous-hop avoidance, and bounded relay retry persistence. Packets at the relay limit can still reach a directly connected verified final recipient, but cannot be forwarded to another relay.
 
-## Current technical checks
+The user-facing state vocabulary distinguishes `queued`, `relaying`, `delivered`, `expired`, and `failed`. Native byte-send acceptance is not represented as delivery confirmation. Relay devices do not decrypt the recipient’s message body.
 
-Run the existing repository checks from the root:
+## Current checks
+
+From the repository root:
 
 ```bash
 pnpm install
 pnpm test
 pnpm build
-pnpm --filter @sanketly/mobile typecheck
+pnpm --filter @sanketly/mobile run typecheck
+pnpm --filter @sanketly/mobile test
+pnpm --filter @sanketly/protocol test
 ```
+
+The sandbox can validate TypeScript, shared protocol tests, and JavaScript unit tests. It does not contain Android SDK, Gradle, adb, an emulator, or a radio-capable device. Nearby discovery, foreground-service survival, OEM battery behavior, and three-device multi-hop range therefore require physical Android acceptance testing.
+
+## Product and claims boundary
+
+SSA is a best-effort emergency communication tool, not a guaranteed carrier replacement. Android force-stop, revoked permissions, battery exhaustion, radio failure, device shutdown, and OEM power-management policies can interrupt operation. The phrase “India’s first” is not treated as a verified public claim; any public positioning should follow independent landscape review and legal/communications approval. The final roadmap is documented in [`SSA_FINAL_PLAN.md`](./SSA_FINAL_PLAN.md).

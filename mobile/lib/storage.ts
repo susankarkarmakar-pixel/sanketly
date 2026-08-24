@@ -1,12 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
-import type { OutboxRecord } from "@sanketly/domain";
+import type { AlertRecord, OutboxRecord, RelayEventRecord } from "@sanketly/domain";
 import { MAX_RELAY_QUEUE_ITEMS, type RelayQueueRecord } from "@sanketly/protocol";
 import { generateMeshIdentity, type MeshIdentity } from "@sanketly/mesh-crypto";
 
 const OUTBOX_KEY = "sanketly.outbox.v1";
 const RELAY_QUEUE_KEY = "sanketly.relay-queue.v1";
 const MESH_IDENTITY_KEY = "sanketly.mesh-identity.v1";
+const ALERTS_KEY = "sanketly.alerts.v1";
+const RELAY_EVENTS_KEY = "sanketly.relay-events.v1";
+const MAX_RELAY_EVENTS = 1_024;
 
 export function createId(prefix: string): string {
   const random = Math.random().toString(36).slice(2, 12);
@@ -94,6 +97,59 @@ export class MobileRelayQueueStore {
 
   async clear(): Promise<void> {
     await AsyncStorage.removeItem(RELAY_QUEUE_KEY);
+  }
+}
+
+export class MobileAlertStore {
+  async list(): Promise<AlertRecord[]> {
+    const raw = await AsyncStorage.getItem(ALERTS_KEY);
+    if (!raw) return [];
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as AlertRecord[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async upsert(record: AlertRecord): Promise<void> {
+    const records = await this.list();
+    const index = records.findIndex((entry) => entry.messageId === record.messageId);
+    if (index === -1) records.push(record);
+    else records[index] = record;
+    await AsyncStorage.setItem(ALERTS_KEY, JSON.stringify(records));
+  }
+
+  async remove(messageId: string): Promise<void> {
+    const records = await this.list();
+    await AsyncStorage.setItem(ALERTS_KEY, JSON.stringify(records.filter((entry) => entry.messageId !== messageId)));
+  }
+
+  async clear(): Promise<void> {
+    await AsyncStorage.removeItem(ALERTS_KEY);
+  }
+}
+
+export class MobileRelayEventStore {
+  async list(): Promise<RelayEventRecord[]> {
+    const raw = await AsyncStorage.getItem(RELAY_EVENTS_KEY);
+    if (!raw) return [];
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as RelayEventRecord[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async append(record: RelayEventRecord): Promise<void> {
+    const records = await this.list();
+    records.push(record);
+    await AsyncStorage.setItem(RELAY_EVENTS_KEY, JSON.stringify(records.slice(-MAX_RELAY_EVENTS)));
+  }
+
+  async clear(): Promise<void> {
+    await AsyncStorage.removeItem(RELAY_EVENTS_KEY);
   }
 }
 

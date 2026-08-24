@@ -100,6 +100,29 @@ describe("Sanketly mesh protocol", () => {
     expect(() => relayPacket(relayed, "relay-2", 1000)).toThrow("Packet cannot be relayed");
   });
 
+  it("allows an exhausted packet only to reach a directly connected verified recipient", () => {
+    const packet = createMessagePacket({
+      packetId: "packet-final-hop",
+      messageId: "message-final-hop",
+      senderId: "alice",
+      recipientId: "dina",
+      conversationId: "dm:dina",
+      ciphertext: "sealed-content",
+      signature: "signature",
+      cryptoVersion: 1,
+      senderSigningPublicKey: "alice-signing-key",
+      senderEncryptionPublicKey: "alice-encryption-key",
+      hopLimit: 1,
+    });
+    const exhausted = { ...packet, hopCount: packet.hopLimit };
+    const destination = { peerId: "dina", linkId: "link-d", lastSeenAt: 1000, verified: true, connectionState: "connected" as const, transport: "nearby" as const };
+    const relay = { peerId: "charlie", linkId: "link-c", lastSeenAt: 1000, verified: true, connectionState: "connected" as const, transport: "nearby" as const };
+
+    expect(selectNextHop(exhausted, [destination, relay], { localPeerId: "bob", now: 1000 })?.peerId).toBe("dina");
+    expect(selectNextHop(exhausted, [relay], { localPeerId: "bob", now: 1000 })).toBeNull();
+    expect(shouldRelayPacket(exhausted, "bob", 1000)).toBe(false);
+  });
+
   it("suppresses duplicate packet identifiers and evicts old entries", () => {
     const cache = new DeduplicationCache(2, 100);
     expect(cache.remember("a", 0)).toBe(true);

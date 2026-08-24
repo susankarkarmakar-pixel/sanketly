@@ -163,9 +163,10 @@ export interface RouteCandidate {
 }
 
 export function selectNextHop(packet: MeshPacket, peers: MeshPeer[], options: { localPeerId?: string; excludeLinkId?: string; now?: number } = {}): MeshPeer | null {
-  if (!canRelay(packet, options.now)) return null;
-  const localPeerId = options.localPeerId;
   const now = options.now ?? Date.now();
+  const hasDirectDestination = packet.type === "message" && peers.some((peer) => peer.peerId === packet.recipientId && peer.connectionState === "connected" && Boolean(peer.linkId) && peer.verified);
+  if (!canRelay(packet, now) && !hasDirectDestination) return null;
+  const localPeerId = options.localPeerId;
   const candidates: RouteCandidate[] = peers
     .filter((peer) => peer.connectionState === "connected" && Boolean(peer.linkId))
     .filter((peer) => packet.type === "announce" || peer.verified)
