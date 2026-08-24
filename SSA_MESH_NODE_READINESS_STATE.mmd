@@ -1,0 +1,35 @@
+flowchart LR
+    S[Stopped] --> C[Checking]
+    C -->|missing permission| P[Blocked permission]
+    C -->|radio unavailable| R[Blocked radio]
+    C -->|checks pass| T[Starting transport]
+    P -->|retry or return from Settings| C
+    R -->|enable radio and re-check| C
+    T -->|advertising and discovery started| W[Ready to search]
+    T -->|native failure| E[Error]
+    E -->|retry| C
+    W --> N[Waiting for verified peer]
+    N --> D[Endpoint discovered\nunverified candidate]
+    D --> A[Awaiting user approval]
+    A -->|reject| U[Unavailable]
+    A -->|accept| L[Connected, unverified]
+    L -->|valid signed announce| V[Verified SSA peer]
+    L -->|lost or rejected| U
+    U -->|rediscovered| N
+    V -->|link lost| N
+    V -->|payload or announce refresh| V
+    W --> B[Degraded background]
+    V --> B
+    B -->|policy reviewed and service active| W
+    B -->|links unavailable| N
+    W --> X[User stops search]
+    N --> X
+    V --> X
+    X --> S
+
+    classDef normal fill:#10213d,stroke:#8ea9ff,color:#f4f7ff,stroke-width:1px;
+    classDef warning fill:#332a12,stroke:#f3c969,color:#fff6dc,stroke-width:1px;
+    classDef recovery fill:#3a1f24,stroke:#ff8b8b,color:#fff2f2,stroke-width:1px;
+    class S,C,T,W,N,L,V,X normal;
+    class P,R,B,D,A warning;
+    class E,U recovery;
