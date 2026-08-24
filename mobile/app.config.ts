@@ -39,6 +39,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "expo-secure-store",
+    ["expo-notifications", { defaultChannel: "ssa-emergency-v1", color: "#B42332" }],
     ["expo-build-properties", { android: { minSdkVersion: 26 } }],
   ],
   experiments: {

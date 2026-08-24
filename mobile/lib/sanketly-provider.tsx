@@ -7,6 +7,8 @@ import { MeshNative } from "@/modules/sanketly-mesh/src";
 import { NearbyNative, type NearbyEvent } from "@/modules/ssa-nearby/src";
 import { createId, loadMeshIdentity, MobileAlertStore, MobileOutboxStore, MobileRelayEventStore, MobileRelayQueueStore } from "./storage";
 import { MeshEngine } from "./mesh/mesh-engine";
+import { useSsaTheme } from "./ssa-theme";
+import { ensureSsaNotificationChannel, loadSsaNotificationsEnabled, notifyReceivedAlert, requestSsaNotificationPermission, saveSsaNotificationsEnabled } from "./notifications";
 
 export interface LocalMessage {
   id: string;
@@ -37,6 +39,8 @@ interface SanketlyContextValue {
   openBatterySettings(): Promise<void>;
   queueMessage(peerId: string, body: string, options?: { displayBody?: string; alert?: StructuredAlert }): Promise<LocalMessage>;
   queueAlert(peerId: string, alert: StructuredAlert): Promise<LocalMessage>;
+  notificationsEnabled: boolean;
+  setNotificationsEnabled(enabled: boolean): Promise<void>;
 }
 
 const initialStatus: TransportStatus = {
@@ -52,13 +56,17 @@ const alertStore = new MobileAlertStore();
 const relayEventStore = new MobileRelayEventStore();
 
 export function SanketlyProvider({ children }: PropsWithChildren) {
+  const { language } = useSsaTheme();
   const [identity, setIdentity] = useState<MeshIdentity | null>(null);
   const [meshStatus, setMeshStatus] = useState<TransportStatus>(initialStatus);
   const [peers, setPeers] = useState<MeshPeer[]>([]);
   const [pendingNearbyRequests, setPendingNearbyRequests] = useState<PendingNearbyRequest[]>([]);
   const [messages, setMessages] = useState<Record<string, LocalMessage[]>>({});
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
+  const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const identityRef = useRef<MeshIdentity | null>(null);
+  const languageRef = useRef(language);
+  const notificationsEnabledRef = useRef(true);
   const peersRef = useRef<MeshPeer[]>([]);
   const announceFrameRef = useRef<number[] | null>(null);
   const meshEngineRef = useRef<MeshEngine | null>(null);
@@ -66,6 +74,18 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     identityRef.current = identity;
   }, [identity]);
+
+  useEffect(() => {
+    languageRef.current = language;
+    void ensureSsaNotificationChannel(language).catch(() => undefined);
+  }, [language]);
+
+  useEffect(() => {
+    void loadSsaNotificationsEnabled().then((enabled) => {
+      notificationsEnabledRef.current = enabled;
+      setNotificationsEnabledState(enabled);
+    }).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     peersRef.current = peers;
@@ -234,6 +254,9 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
       const record: AlertRecord = { alert, messageId: message.messageId, deliveryState: "delivered", updatedAt: Date.now() };
       await alertStore.upsert(record);
       setAlerts((current) => [record, ...current.filter((entry) => entry.messageId !== record.messageId)]);
+      if (notificationsEnabledRef.current) {
+        void notifyReceivedAlert(alert, message.messageId, languageRef.current).catch(() => undefined);
+      }
     }
   }
 
@@ -251,6 +274,9 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     }
     setMeshStatus({ kind: "mesh", state: "starting", detail: "Starting SSA nearby discovery…" });
     try {
+      if (notificationsEnabledRef.current) {
+        await requestSsaNotificationPermission(languageRef.current).catch(() => false);
+      }
       if (Platform.OS === "android") {
         if (!NearbyNative.isAvailable) throw new Error("SSA Nearby native module is not installed in this development build");
         const permissions: string[] = [];
@@ -398,7 +424,14 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     });
   }, [queueMessage]);
 
-  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert }), [identity, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert]);
+  const setNotificationsEnabled = useCallback(async (enabled: boolean) => {
+    notificationsEnabledRef.current = enabled;
+    setNotificationsEnabledState(enabled);
+    await saveSsaNotificationsEnabled(enabled);
+    if (enabled) await requestSsaNotificationPermission(languageRef.current).catch(() => false);
+  }, []);
+
+  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert, notificationsEnabled, setNotificationsEnabled }), [identity, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert, notificationsEnabled, setNotificationsEnabled]);
   return <SanketlyContext.Provider value={value}>{children}</SanketlyContext.Provider>;
 }
 

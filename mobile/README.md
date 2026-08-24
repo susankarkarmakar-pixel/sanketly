@@ -50,7 +50,22 @@ The local UI uses honest delivery vocabulary. `queued` means the encrypted packe
 
 On Android, SSA uses Google Nearby Connections with `P2P_CLUSTER` as the primary transport. Bluetooth, nearby Wi-Fi, notification, and legacy location permissions are requested according to Android version. The foreground service uses a persistent notification, sticky restart, task-removal recovery, boot-time recovery configuration, and a JavaScript event buffer.
 
-This is **best effort**, not an uninterrupted-service guarantee. Android force-stop, revoked permissions, battery exhaustion, radio failure, and OEM power-management policies can still stop or restrict the app. Operators should review the battery settings CTA and keep radios enabled during a pilot.
+SSA also creates a dedicated `ssa-emergency-v1` local notification channel. Newly received, decrypted, non-expired structured alerts generate a high-importance notification with sound, vibration, and private lock-screen visibility. The notification body includes the alert title, localized priority, alert type, and village/area, but does not include the full description. Tapping the notification opens the matching alert detail record. Notification permission denial is handled as a degraded state: mesh operation is not blocked, and the setting can be enabled again later.
+
+This is **best effort**, not an uninterrupted-service guarantee. Android force-stop, revoked permissions, battery exhaustion, radio failure, and OEM power-management policies can still stop or restrict the app. Operators should review the battery settings CTA and keep radios enabled during a pilot. Android users should also verify that the SSA emergency channel remains enabled and that notification permission is granted; channel importance and lock-screen display are ultimately controlled by Android system settings and device/OEM policy.
+
+## Local notification acceptance test
+
+| Test | Expected result |
+|---|---|
+| First start with notifications enabled | Android notification permission is requested without preventing Nearby startup if denied. |
+| Receive a non-expired critical/high alert while app is foregrounded | A high-importance SSA emergency notification appears with sound/vibration according to device settings. |
+| Receive an alert while app is backgrounded | The alert is persisted locally and a notification appears if Android permits background delivery. |
+| Tap the notification | SSA opens the corresponding alert detail record using the notification `messageId`. |
+| Disable notifications in Settings | Future received alerts are still persisted but do not schedule local notifications. |
+| Re-enable notifications | Permission is requested again when needed and future alerts can notify. |
+| Receive an expired alert | The alert is persisted for local history but no new notification is scheduled. |
+| Android notification permission denied | Mesh and alert persistence continue; the UI does not claim notification readiness. |
 
 ## Three-device acceptance test
 
