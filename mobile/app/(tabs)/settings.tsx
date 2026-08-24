@@ -1,37 +1,60 @@
 import { router } from "expo-router";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { SsaButton, SsaCard } from "@/components/ssa/ssa-ui";
-import { SSA_COLORS, SSA_COPY } from "@/constants/ssa";
+import { useSsaTheme, type SsaColors, type SsaLanguage, type SsaThemeMode } from "@/lib/ssa-theme";
 import { useSanketly } from "@/lib/sanketly-provider";
-import { SETTINGS_SECTIONS, STORAGE_BOUNDARY } from "@/features/settings/settings-model";
+import { STORAGE_BOUNDARY } from "@/features/settings/settings-model";
+
+const LANGUAGES: Array<{ id: SsaLanguage; labelKey: "bengali" | "english" | "hindi" }> = [
+  { id: "bn", labelKey: "bengali" },
+  { id: "en", labelKey: "english" },
+  { id: "hi", labelKey: "hindi" },
+];
+
+const THEMES: Array<{ id: SsaThemeMode; labelKey: "light" | "dark" | "system" }> = [
+  { id: "light", labelKey: "light" },
+  { id: "dark", labelKey: "dark" },
+  { id: "system", labelKey: "system" },
+];
 
 export default function SettingsScreen() {
   const { peerId, openBatterySettings } = useSanketly();
+  const { colors, language, text, setLanguage, themeMode, setThemeMode } = useSsaTheme();
+  const styles = makeStyles(colors);
+
   return <ScreenContainer edges={["top", "left", "right", "bottom"]}><ScrollView contentContainerStyle={styles.content}>
-    <View style={styles.header}><View><Text style={styles.eyebrow}>SSA / SETTINGS</Text><Text style={styles.title}>{SSA_COPY.settings}</Text><Text style={styles.subtitle}>আপনার ডিভাইস ও জরুরি mode-এর নিয়ন্ত্রণ</Text></View><Text onPress={() => router.back()} style={styles.back}>ফিরুন</Text></View>
-    <SsaCard><Text style={styles.section}>{SETTINGS_SECTIONS.language}</Text><View style={styles.languageRow}><View><Text style={styles.optionTitle}>বাংলা</Text><Text style={styles.optionMeta}>প্রধান ভাষা · Bengali-first UI</Text></View><Text style={styles.selected}>সক্রিয়</Text></View><View style={styles.languageRow}><View><Text style={styles.optionTitle}>হিন্দি / English</Text><Text style={styles.optionMeta}>পরবর্তী release-এ যোগ হবে</Text></View><Text style={styles.disabled}>শীঘ্রই</Text></View></SsaCard>
-    <SsaCard><Text style={styles.section}>{SETTINGS_SECTIONS.emergencyPersistence}</Text><Text style={styles.body}>SSA foreground service, persistent notification, boot recovery এবং relay queue ব্যবহার করে best-effort persistence দেয়। Android force-stop, OEM policy বা permission বন্ধ হলে কোনো app-ই নিরবচ্ছিন্ন থাকার নিশ্চয়তা দিতে পারে না।</Text><SsaButton label="Battery settings খুলুন" variant="secondary" onPress={() => void openBatterySettings()} /></SsaCard>
-    <SsaCard><Text style={styles.section}>{SETTINGS_SECTIONS.privacy}</Text><Text style={styles.body}>বার্তার plaintext relay ফোনে থাকে না। Recipient-এর public key দিয়ে encrypted payload তৈরি হয় এবং sender metadata-এর সঙ্গে signature যুক্ত থাকে। এই build-এ analytics বা location sharing স্বয়ংক্রিয় নয়।</Text></SsaCard>
-    <SsaCard><Text style={styles.section}>{SETTINGS_SECTIONS.device}</Text><Text style={styles.optionMeta}>Local secure peer ID</Text><Text selectable style={styles.peerId}>{peerId ? `${peerId.slice(0, 22)}…` : "পরিচয় তৈরি হচ্ছে…"}</Text><Text style={styles.note}>Identity SecureStore-এ থাকে। নতুন identity তৈরি হলে পুরনো পরিচয়ের সঙ্গে peer verification আর মিলবে না।</Text><Text style={styles.note}>{STORAGE_BOUNDARY}</Text></SsaCard>
-    <SsaButton label="SSA কীভাবে কাজ করে" variant="secondary" onPress={() => router.push("/onboarding")} />
+    <View style={styles.header}><View><Text style={styles.eyebrow}>SSA / SETTINGS</Text><Text style={styles.title}>{text.settings}</Text><Text style={styles.subtitle}>{language === "bn" ? "আপনার ডিভাইস ও জরুরি মোডের নিয়ন্ত্রণ" : language === "hi" ? "अपने डिवाइस और आपातकालीन मोड का नियंत्रण" : "Control your device and emergency mode"}</Text></View><Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>{text.back}</Text></Pressable></View>
+
+    <SsaCard><Text style={styles.section}>{text.language}</Text><Text style={styles.helper}>{text.languageMeta}</Text>{LANGUAGES.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ selected: language === item.id }} key={item.id} onPress={() => void setLanguage(item.id)} style={[styles.optionRow, language === item.id && styles.selectedRow]}><View><Text style={styles.optionTitle}>{text[item.labelKey]}</Text><Text style={styles.optionMeta}>{item.id === "bn" ? "বাংলা" : item.id === "hi" ? "हिन्दी" : "English"}</Text></View><Text style={language === item.id ? styles.selected : styles.unselected}>{language === item.id ? text.active : ""}</Text></Pressable>)}</SsaCard>
+
+    <SsaCard><Text style={styles.section}>{text.theme}</Text>{THEMES.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ selected: themeMode === item.id }} key={item.id} onPress={() => void setThemeMode(item.id)} style={[styles.optionRow, themeMode === item.id && styles.selectedRow]}><Text style={styles.optionTitle}>{text[item.labelKey]}</Text><Text style={themeMode === item.id ? styles.selected : styles.unselected}>{themeMode === item.id ? text.active : ""}</Text></Pressable>)}</SsaCard>
+
+    <SsaCard><Text style={styles.section}>{text.emergencyPersistence}</Text><Text style={styles.body}>{language === "bn" ? "SSA foreground service, persistent notification, boot recovery এবং relay queue ব্যবহার করে best-effort persistence দেয়। Android force-stop, OEM policy বা permission বন্ধ হলে কোনো app-ই নিরবচ্ছিন্ন থাকার নিশ্চয়তা দিতে পারে না।" : language === "hi" ? "SSA foreground service, persistent notification, boot recovery और relay queue का उपयोग करता है। Android force-stop, OEM policy या permission बंद होने पर कोई ऐप निरंतर चलने की गारंटी नहीं दे सकता।" : "SSA uses a foreground service, persistent notification, boot recovery, and relay queue on a best-effort basis. Android force-stop, OEM policy, or disabled permissions can still stop an app."}</Text><SsaButton label={text.batterySettings} variant="secondary" onPress={() => void openBatterySettings()} /></SsaCard>
+    <SsaCard><Text style={styles.section}>{text.privacy}</Text><Text style={styles.body}>{language === "bn" ? "বার্তার plaintext relay ফোনে থাকে না। Recipient-এর public key দিয়ে encrypted payload তৈরি হয় এবং sender metadata-এর সঙ্গে signature যুক্ত থাকে।" : language === "hi" ? "संदेश का plaintext relay फ़ोन में नहीं रहता। Recipient की public key से encrypted payload बनता है और sender metadata के साथ signature जुड़ा रहता है।" : "Message plaintext is not stored on relay phones. The payload is encrypted to the recipient public key and signed with sender metadata."}</Text></SsaCard>
+    <SsaCard><Text style={styles.section}>{text.device}</Text><Text style={styles.optionMeta}>Local secure peer ID</Text><Text selectable style={styles.peerId}>{peerId ? `${peerId.slice(0, 22)}…` : (language === "bn" ? "পরিচয় তৈরি হচ্ছে…" : language === "hi" ? "पहचान बन रही है…" : "Creating identity…")}</Text><Text style={styles.note}>{language === "bn" ? "Identity SecureStore-এ থাকে। নতুন identity তৈরি হলে পুরনো পরিচয়ের সঙ্গে peer verification আর মিলবে না।" : language === "hi" ? "Identity SecureStore में रहती है। नई identity बनने पर पुराने peer verification मेल नहीं खाएँगे।" : "The identity stays in SecureStore. If a new identity is created, previous peer verifications will no longer match."}</Text><Text style={styles.note}>{STORAGE_BOUNDARY}</Text></SsaCard>
+    <SsaButton label={text.onboarding} variant="secondary" onPress={() => router.push("/onboarding")} />
   </ScrollView></ScreenContainer>;
 }
 
-const styles = StyleSheet.create({
-  content: { padding: 18, gap: 13, paddingBottom: 30 },
-  header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
-  eyebrow: { color: SSA_COLORS.faint, fontSize: 10, fontWeight: "800", letterSpacing: 1.1 },
-  title: { color: SSA_COLORS.foreground, fontSize: 25, fontWeight: "900", marginTop: 5 },
-  subtitle: { color: SSA_COLORS.muted, fontSize: 12, marginTop: 5 },
-  back: { color: SSA_COLORS.primary, fontSize: 13, fontWeight: "800" },
-  section: { color: SSA_COLORS.foreground, fontSize: 14, fontWeight: "900", marginBottom: 10 },
-  languageRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 11, borderTopColor: SSA_COLORS.border, borderTopWidth: StyleSheet.hairlineWidth },
-  optionTitle: { color: SSA_COLORS.foreground, fontSize: 13, fontWeight: "800" },
-  optionMeta: { color: SSA_COLORS.faint, fontSize: 11, marginTop: 3 },
-  selected: { color: SSA_COLORS.success, fontSize: 11, fontWeight: "800" },
-  disabled: { color: SSA_COLORS.faint, fontSize: 10, fontWeight: "800" },
-  body: { color: SSA_COLORS.muted, fontSize: 12, lineHeight: 20, marginBottom: 12 },
-  peerId: { color: SSA_COLORS.primary, fontSize: 12, marginTop: 8 },
-  note: { color: SSA_COLORS.faint, fontSize: 10, lineHeight: 16, marginTop: 9 },
-});
+function makeStyles(colors: SsaColors) {
+  return StyleSheet.create({
+    content: { padding: 18, gap: 13, paddingBottom: 30 },
+    header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+    eyebrow: { color: colors.faint, fontSize: 10, fontWeight: "800", letterSpacing: 1.1 },
+    title: { color: colors.foreground, fontSize: 25, fontWeight: "900", marginTop: 5 },
+    subtitle: { color: colors.muted, fontSize: 12, marginTop: 5, maxWidth: 230 },
+    back: { color: colors.primary, fontSize: 13, fontWeight: "800" },
+    section: { color: colors.foreground, fontSize: 14, fontWeight: "900", marginBottom: 4 },
+    helper: { color: colors.faint, fontSize: 11, marginBottom: 4 },
+    optionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, paddingHorizontal: 10, borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, borderRadius: 10 },
+    selectedRow: { backgroundColor: colors.surfaceRaised },
+    optionTitle: { color: colors.foreground, fontSize: 13, fontWeight: "800" },
+    optionMeta: { color: colors.faint, fontSize: 11, marginTop: 3 },
+    selected: { color: colors.success, fontSize: 11, fontWeight: "800" },
+    unselected: { color: "transparent", fontSize: 11 },
+    body: { color: colors.muted, fontSize: 12, lineHeight: 20, marginBottom: 12 },
+    peerId: { color: colors.primary, fontSize: 12, marginTop: 8 },
+    note: { color: colors.faint, fontSize: 10, lineHeight: 16, marginTop: 9 },
+  });
+}

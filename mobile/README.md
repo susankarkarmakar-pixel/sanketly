@@ -81,3 +81,7 @@ The installable artifact is written to `mobile/android/app/build/outputs/apk/rel
 ## Crypto startup requirement
 
 The mobile entrypoint is `index.js`, not a direct `expo-router/entry` import. It loads `react-native-get-random-values` before Expo Router evaluates the provider and `libsodium-wrappers-sumo`. This ordering is required because Hermes does not provide `globalThis.crypto.getRandomValues` by default, while the ESM libsodium bundle requires a secure random source during module initialization. Do not change the package `main` field back to `expo-router/entry` unless an equivalent secure-random bootstrap remains in front of it.
+
+## Theme and language settings
+
+The app includes a persistent SSA theme and localization provider at `lib/ssa-theme.tsx`. Users can select **Light mode**, **Dark mode**, or **Follow phone setting**, and can select **Bengali**, **English**, or **Hindi** from Settings. Preferences are stored in AsyncStorage and are restored on the next launch. The dashboard, tabs, alerts, composer, network diagnostics, settings, onboarding, alert detail, and peer chat screens consume the active palette and translated copy.
