@@ -1,4 +1,4 @@
-package in.sanketsetu.nearby
+package `in`.sanketsetu.nearby
 
 import android.Manifest
 import android.bluetooth.BluetoothManager
@@ -224,7 +224,7 @@ internal object SsaNearbyRuntime {
       try {
         sink.invoke(event)
         return
-      } catch {
+      } catch (_: Exception) {
         eventSink = null
       }
     }

@@ -33,7 +33,11 @@ const config: ExpoConfig = {
       "RECEIVE_BOOT_COMPLETED",
     ],
   },
-  plugins: ["expo-router", "expo-secure-store"],
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    ["expo-build-properties", { android: { minSdkVersion: 26 } }],
+  ],
   experiments: {
     typedRoutes: true,
   },

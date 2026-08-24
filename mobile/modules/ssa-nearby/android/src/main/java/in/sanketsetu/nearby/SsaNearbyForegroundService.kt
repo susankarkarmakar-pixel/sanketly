@@ -1,4 +1,4 @@
-package in.sanketsetu.nearby
+package `in`.sanketsetu.nearby
 
 import android.app.Notification
 import android.app.NotificationChannel

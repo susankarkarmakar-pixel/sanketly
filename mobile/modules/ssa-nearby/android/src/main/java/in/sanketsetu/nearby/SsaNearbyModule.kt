@@ -1,4 +1,4 @@
-package in.sanketsetu.nearby
+package `in`.sanketsetu.nearby
 
 import android.content.Context
 import android.content.Intent
@@ -61,7 +61,7 @@ class SsaNearbyModule : Module() {
     SsaNearbyRuntime.attach(context) { event ->
       try {
         sendEvent("SsaNearbyEvent", event)
-      } catch {
+      } catch (_: Exception) {
         // The runtime persists events whenever the JavaScript listener is unavailable.
       }
     }

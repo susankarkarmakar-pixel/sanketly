@@ -61,3 +61,19 @@ The same test should be repeated after backgrounding, screen lock, task removal,
 ## Persistence roadmap
 
 The current Expo-compatible prototype uses AsyncStorage for outbox, relay queue, alert records, and relay events, with SecureStore for private identity material. This keeps the JavaScript validation path light but is not the final high-volume emergency datastore. Before field deployment, migrate these repositories to an encrypted SQLite/Room-compatible implementation with schema migrations, crash-safe transactions, bounded event retention, and explicit recovery tests.
+
+## Android test APK build
+
+The current Android release configuration targets **minSdk 26** because the included experimental raw-BLE fallback module declares Android 26 as its minimum. The primary Nearby module remains the SSA pilot transport. After installing Android SDK Platform-Tools, Android SDK Platform 35 or newer as required by the generated project, and a full JDK, regenerate and build the APK with:
+
+```bash
+cd mobile
+pnpm exec expo prebuild --clean
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export ANDROID_HOME="$HOME/Android/Sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$JAVA_HOME/bin:$PATH"
+bash ./android/gradlew -p android assembleRelease --no-daemon
+```
+
+The installable artifact is written to `mobile/android/app/build/outputs/apk/release/app-release.apk`. The repository also includes `scripts/install-ssa-apk-3-devices.sh` for concurrent installation on explicitly selected ADB serials. The release APK produced from the current test checkpoint is signed with the generated debug keystore for development testing only; create and protect a production upload/release keystore before distribution outside the test team.

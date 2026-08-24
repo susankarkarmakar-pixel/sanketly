@@ -1,4 +1,4 @@
-package in.sanketsetu.nearby
+package `in`.sanketsetu.nearby
 
 import android.content.BroadcastReceiver
 import android.content.Context
