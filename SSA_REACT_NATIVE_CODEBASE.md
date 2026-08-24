@@ -11,10 +11,20 @@ sanketly/
 ├── mobile/
 │   ├── app/
 │   │   ├── _layout.tsx                 # Root navigation and SSA provider
-│   │   ├── index.tsx                   # Bengali-first dashboard and emergency mode
+│   │   ├── (tabs)/
+│   │   │   ├── _layout.tsx             # Persistent Dashboard/Alerts/Network/Settings tabs
+│   │   │   ├── index.tsx               # Bengali-first dashboard and emergency mode
+│   │   │   ├── alerts.tsx              # Alert history tab
+│   │   │   ├── network.tsx             # Network diagnostics tab
+│   │   │   └── settings.tsx            # Settings tab
+│   │   ├── alerts/                     # Composer and alert detail routes
+│   │   ├── onboarding.tsx              # Bengali-first onboarding explainer
 │   │   └── chat/[peerId].tsx           # Encrypted peer conversation
 │   ├── components/
-│   │   └── screen-container.tsx        # Safe-area screen wrapper
+│   │   ├── screen-container.tsx        # Safe-area screen wrapper
+│   │   └── ssa/
+│   │       ├── ssa-ui.tsx              # Shared SSA cards, buttons, status, alert, peer UI
+│   │       └── ssa-tab-icon.tsx        # Fixed tab icon mapping
 │   ├── lib/
 │   │   ├── sanketly-provider.tsx       # UI state, identity, native events, routing
 │   │   ├── storage.ts                   # Secure identity, outbox, relay queue
