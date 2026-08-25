@@ -110,3 +110,10 @@ The mobile entrypoint is `index.js`, not a direct `expo-router/entry` import. It
 ## Theme and language settings
 
 The app includes a persistent SSA theme and localization provider at `lib/ssa-theme.tsx`. Users can select **Light mode**, **Dark mode**, or **Follow phone setting**, and can select **Bengali**, **English**, or **Hindi** from Settings. Preferences are stored in AsyncStorage and are restored on the next launch. The dashboard, tabs, alerts, composer, network diagnostics, settings, onboarding, alert detail, and peer chat screens consume the active palette and translated copy.
+
+
+## Build and download an APK from GitHub Actions
+
+The repository now includes a manual workflow at `.github/workflows/build-ssa-apk.yml`. Open the GitHub repository, select **Actions → Build SSA APK → Run workflow**, keep the default pilot package `in.sanketsetu.alert.pilot` and version, then start the workflow. When it finishes successfully, open the workflow run and download the artifact named `ssa-<version>-pilot-apk` from the **Artifacts** section. The artifact contains the APK, `SHA256SUMS.txt`, Android package metadata, signature verification output, and build information.
+
+This workflow produces a development/test-signed pilot APK for supervised testing. It is not a Play Store production release and is not signed with a protected production keystore. GitHub artifact downloads require access to the repository, and artifacts expire according to the retention value selected when the workflow is run. For repeatable updates on an already-installed pilot package, configure a protected signing keystore as a repository secret before relying on in-place upgrades; otherwise Android may require uninstalling the older differently signed pilot APK first, which removes its local app data.
