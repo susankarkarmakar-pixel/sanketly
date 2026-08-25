@@ -1,0 +1,129 @@
+name: Build SSA APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      android_package:
+        description: "Android package name"
+        required: true
+        default: "in.sanketsetu.alert.pilot"
+        type: string
+      app_version:
+        description: "SSA version shown in the APK"
+        required: true
+        default: "0.1.3"
+        type: string
+      retention_days:
+        description: "How many days GitHub keeps the downloadable artifact"
+        required: true
+        default: "14"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ssa-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build downloadable SSA pilot APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "1"
+      SSA_ANDROID_PACKAGE: ${{ inputs.android_package }}
+      SSA_VERSION: ${{ inputs.app_version }}
+      ANDROID_PACKAGE: ${{ inputs.android_package }}
+      SSA_VERSION_NAME: ${{ inputs.app_version }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "build-tools;36.0.0"
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate mobile source
+        run: pnpm --filter @sanketly/mobile run typecheck
+
+      - name: Run mobile tests
+        run: pnpm --filter @sanketly/mobile test
+
+      - name: Generate Android project
+        working-directory: mobile
+        run: pnpm exec expo prebuild --clean --non-interactive
+
+      - name: Build release APK
+        working-directory: mobile
+        run: |
+          chmod +x android/gradlew
+          ./android/gradlew -p android assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APK metadata
+        id: metadata
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          mkdir -p ../artifacts
+          cp "$apk" "../artifacts/ssa-${{ inputs.app_version }}-pilot.apk"
+          sha256sum "../artifacts/ssa-${{ inputs.app_version }}-pilot.apk" | tee ../artifacts/SHA256SUMS.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" | head -n 12 | tee ../artifacts/android-badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk" | tee ../artifacts/apksigner-verify.txt
+          {
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "package=${{ inputs.android_package }}"
+            echo "version=${{ inputs.app_version }}"
+            echo "artifact=ssa-${{ inputs.app_version }}-pilot.apk"
+            echo "note=Development/test-signed pilot APK; not a production release."
+          } | tee ../artifacts/build-info.txt
+
+      - name: Upload downloadable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssa-${{ inputs.app_version }}-pilot-apk
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+          compression-level: 0
+
+      - name: Clean generated native project
+        if: always()
+        run: rm -rf mobile/android mobile/ios mobile/.expo artifacts
