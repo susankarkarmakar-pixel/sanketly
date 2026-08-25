@@ -142,11 +142,16 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
         return;
       }
       if (event.type === "connection-request") {
-        setPendingNearbyRequests((current) => [
-          ...current.filter((request) => request.endpointId !== event.endpointId),
-          { endpointId: event.endpointId, name: event.name, authenticationToken: event.authenticationToken },
-        ]);
-        setMeshStatus({ kind: "mesh", state: "starting", detail: `Connection request from ${event.name}` });
+        if (event.autoAccepted) {
+          setPendingNearbyRequests((current) => current.filter((request) => request.endpointId !== event.endpointId));
+          setMeshStatus({ kind: "mesh", state: "starting", detail: `Nearby link accepted; verifying ${event.name}` });
+        } else {
+          setPendingNearbyRequests((current) => [
+            ...current.filter((request) => request.endpointId !== event.endpointId),
+            { endpointId: event.endpointId, name: event.name, authenticationToken: event.authenticationToken },
+          ]);
+          setMeshStatus({ kind: "mesh", state: "starting", detail: `Connection request from ${event.name}` });
+        }
         return;
       }
       if (event.type === "peer") {
@@ -336,11 +341,10 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
             PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
           );
         }
-        if (Platform.Version >= 32 && PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES) {
+        // NEARBY_WIFI_DEVICES is a runtime permission on Android 13+.
+        // POST_NOTIFICATIONS is optional and must never prevent mesh startup.
+        if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES) {
           permissions.push(PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES);
-        }
-        if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
-          permissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
         }
         if (Platform.Version >= 29 && Platform.Version <= 31) {
           permissions.push(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
@@ -368,10 +372,12 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
 
       if (Platform.OS === "android") {
         await NearbyNative.start(NEARBY_SERVICE_ID, `SSA-${identity.peerId.slice(0, 8)}`);
+        // Native Nearby owns the authoritative startup/error state. Do not
+        // overwrite an asynchronous permission/radio/advertising failure here.
       } else {
         await MeshNative.start(announceBytes);
+        setMeshStatus({ kind: "mesh", state: "starting", detail: "SSA nearby transport is active" });
       }
-      setMeshStatus({ kind: "mesh", state: "starting", detail: Platform.OS === "android" ? "Waiting for nearby SSA connection approval" : "SSA nearby transport is active" });
     } catch (error) {
       setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to start SSA nearby transport" });
     }

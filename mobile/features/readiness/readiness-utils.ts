@@ -31,7 +31,7 @@ function androidTransportPermissions(): string[] {
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
     );
   }
-  if (Platform.Version >= 32 && PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES) permissions.push(PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES);
+  if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES) permissions.push(PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES);
   if (Platform.Version >= 29 && Platform.Version <= 31) permissions.push(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
   if (Platform.Version <= 28) permissions.push(PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION);
   return permissions.filter(Boolean) as string[];

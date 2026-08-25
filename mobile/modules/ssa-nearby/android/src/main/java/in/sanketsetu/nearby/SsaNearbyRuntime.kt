@@ -36,6 +36,8 @@ internal object SsaNearbyRuntime {
   private var currentServiceId = ""
   private var currentLocalName = "SSA device"
   private var eventSink: ((Map<String, Any?>) -> Unit)? = null
+  private var advertisingStarted = false
+  private var discoveryStarted = false
   private val discoveredEndpoints = mutableSetOf<String>()
   private val connectedEndpoints = mutableSetOf<String>()
 
@@ -71,6 +73,8 @@ internal object SsaNearbyRuntime {
     connectionsClient = null
     discoveredEndpoints.clear()
     connectedEndpoints.clear()
+    advertisingStarted = false
+    discoveryStarted = false
     running = false
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     emitStatus(context, "stopped", "SSA Nearby foreground transport stopped")
@@ -123,6 +127,8 @@ internal object SsaNearbyRuntime {
     emitStatus(context, "starting", "Starting persistent SSA Nearby service")
     connectionsClient = Nearby.getConnectionsClient(context.applicationContext)
     running = true
+    advertisingStarted = false
+    discoveryStarted = false
     discoveredEndpoints.clear()
     connectedEndpoints.clear()
 
@@ -130,10 +136,21 @@ internal object SsaNearbyRuntime {
     val discoveryOptions = DiscoveryOptions.Builder().setStrategy(STRATEGY).build()
     val client = connectionsClient ?: return
     client.startAdvertising(localName, serviceId, connectionLifecycleCallback, advertisingOptions)
+      .addOnSuccessListener {
+        advertisingStarted = true
+        emitReadyIfTransportStarted(context)
+      }
       .addOnFailureListener { emitStatus(context, "error", "SSA advertising failed: ${it.message ?: "unknown error"}") }
     client.startDiscovery(serviceId, endpointDiscoveryCallback, discoveryOptions)
+      .addOnSuccessListener {
+        discoveryStarted = true
+        emitReadyIfTransportStarted(context)
+      }
       .addOnFailureListener { emitStatus(context, "error", "SSA discovery failed: ${it.message ?: "unknown error"}") }
-      .addOnSuccessListener { emitStatus(context, "ready", "SSA Nearby discovery is persistent in emergency mode") }
+  }
+
+  private fun emitReadyIfTransportStarted(context: Context) {
+    if (advertisingStarted && discoveryStarted) emitStatus(context, "ready", "SSA Nearby advertising and discovery are active")
   }
 
   private fun stopTransportOnly() {
@@ -143,6 +160,8 @@ internal object SsaNearbyRuntime {
     connectionsClient = null
     discoveredEndpoints.clear()
     connectedEndpoints.clear()
+    advertisingStarted = false
+    discoveryStarted = false
     running = false
   }
 
@@ -177,7 +196,16 @@ internal object SsaNearbyRuntime {
 
   private val connectionLifecycleCallback = object : ConnectionLifecycleCallback() {
     override fun onConnectionInitiated(endpointId: String, connectionInfo: ConnectionInfo) {
-      emit("connection-request", mapOf("endpointId" to endpointId, "name" to connectionInfo.endpointName, "authenticationToken" to connectionInfo.authenticationToken))
+      // Accept the transport link automatically in the pilot. The link is not
+      // trusted as an SSA peer until the signed identity announcement passes.
+      requireClient().acceptConnection(endpointId, payloadCallback)
+        .addOnSuccessListener {
+          emit("connection-request", mapOf("endpointId" to endpointId, "name" to connectionInfo.endpointName, "authenticationToken" to connectionInfo.authenticationToken, "autoAccepted" to true))
+        }
+        .addOnFailureListener {
+          emit("connection-request", mapOf("endpointId" to endpointId, "name" to connectionInfo.endpointName, "authenticationToken" to connectionInfo.authenticationToken, "autoAccepted" to false))
+          emitStatus(null, "error", "Nearby connection acceptance failed: ${it.message ?: "unknown error"}")
+        }
     }
 
     override fun onConnectionResult(endpointId: String, resolution: ConnectionResolution) {
