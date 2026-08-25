@@ -1,0 +1,42 @@
+flowchart TD
+    A[First launch] --> B[WF-01 Welcome and safety boundary]
+    B -->|Start| C[WF-02 Choose language\nBengali default]
+    B -->|Later| L[Dashboard in limited mode\nSetup banner remains]
+    C --> D[WF-03 Choose role\nResident or Volunteer]
+    D --> E[WF-04 Explain Nearby access]
+    E --> F{Nearby permissions granted?}
+    F -->|Yes| G[WF-05 Explain notifications]
+    F -->|Denied once| H[Explain impact and offer retry]
+    H -->|Retry| E
+    H -->|Continue limited| G
+    F -->|Blocked/permanently denied| I[WF-08 Recovery screen]
+    I -->|Open Android Settings| J[Return from Settings]
+    J --> K[Re-check actual permission state]
+    K --> F
+    I -->|Limited mode| G
+    G --> N{Notification permission granted?}
+    N -->|Yes| O[WF-06 Background reliability guidance]
+    N -->|No| P[Show notification limitation\nMesh may continue]
+    P --> O
+    O --> Q{Battery settings reviewed?}
+    Q -->|Review| R[Open Android battery settings]
+    R --> S[Return and re-check]
+    S --> Q
+    Q -->|Skip with warning| T[WF-07 Live readiness check]
+    Q -->|Reviewed| T
+    T --> U{Critical readiness complete?}
+    U -->|Yes| V[WF-09 Ready to search]
+    U -->|Recoverable issue| I
+    U -->|Unsupported/blocked| W[Limited mode\nVisible cause and recovery action]
+    V --> X[Start nearby search]
+    X --> Y[Dashboard with readiness summary]
+    W --> L
+    L --> Z[Network tab: Setup and readiness]
+    Z --> I
+
+    classDef screen fill:#10213d,stroke:#8ea9ff,color:#f4f7ff,stroke-width:1px;
+    classDef decision fill:#332a12,stroke:#f3c969,color:#fff6dc,stroke-width:1px;
+    classDef recovery fill:#3a1f24,stroke:#ff8b8b,color:#fff2f2,stroke-width:1px;
+    class A,B,C,D,E,G,O,T,V,X,Y,L,Z screen;
+    class F,N,Q,U decision;
+    class H,I,J,K,P,R,S,W recovery;

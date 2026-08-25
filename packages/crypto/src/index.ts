@@ -39,8 +39,11 @@ function base64ToBuffer(b64: string): ArrayBuffer {
 const SESSION_PREFIX = 'proteus_session_';
 
 class SimplePreKeyStore extends proteus.session.PreKeyStore {
-  constructor(private preKeys: Map<number, proteus.keys.PreKey>) {
+  private readonly preKeys: Map<number, proteus.keys.PreKey>;
+
+  constructor(preKeys: Map<number, proteus.keys.PreKey>) {
     super();
+    this.preKeys = preKeys;
   }
   async load_prekey(id: number) {
     return this.preKeys.get(id);
