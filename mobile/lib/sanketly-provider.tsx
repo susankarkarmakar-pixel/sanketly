@@ -1,5 +1,6 @@
 import { createAcknowledgementPacket, derivePeerId, encryptMeshMessage, envelopeToMeshPacket, type DecryptedMeshMessage, type MeshIdentity } from "@sanketly/mesh-crypto";
-import { parseStructuredAlert, serializeStructuredAlert, type AlertRecord, type OutboxRecord, type StructuredAlert } from "@sanketly/domain";
+import Constants from "expo-constants";
+import { parseStructuredAlert, serializeStructuredAlert, type AlertRecord, type OutboxRecord, type RelayEventRecord, type StructuredAlert } from "@sanketly/domain";
 import { createAnnouncePacket, decodePacket, encodePacket, NEARBY_SERVICE_ID, type MeshPacket, type MeshPeer, type TransportStatus } from "@sanketly/protocol";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { PermissionsAndroid, Platform } from "react-native";
@@ -32,6 +33,8 @@ interface SanketlyContextValue {
   pendingNearbyRequests: PendingNearbyRequest[];
   messages: Record<string, LocalMessage[]>;
   alerts: AlertRecord[];
+  relayEvents: RelayEventRecord[];
+  exportDiagnostics(): Promise<string>;
   startMesh(): Promise<void>;
   stopMesh(): Promise<void>;
   acceptNearbyRequest(endpointId: string): Promise<void>;
@@ -63,6 +66,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
   const [pendingNearbyRequests, setPendingNearbyRequests] = useState<PendingNearbyRequest[]>([]);
   const [messages, setMessages] = useState<Record<string, LocalMessage[]>>({});
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
+  const [relayEvents, setRelayEvents] = useState<RelayEventRecord[]>([]);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const identityRef = useRef<MeshIdentity | null>(null);
   const languageRef = useRef(language);
@@ -111,14 +115,17 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
           if (packet.type === "announce") handleAnnounce(linkId, packet);
         },
         onRelay: (packet, viaPeer) => {
-          void relayEventStore.append({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "forwarded", peerId: viaPeer.peerId, createdAt: Date.now() });
+          void recordRelayEvent({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "forwarded", peerId: viaPeer.peerId, createdAt: Date.now() });
           setMeshStatus((current) => ({ ...current, detail: `Relaying through ${viaPeer.displayName ?? "nearby peer"}` }));
         },
         onQueued: (packet) => {
-          void relayEventStore.append({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "queued", createdAt: Date.now() });
+          void recordRelayEvent({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "queued", createdAt: Date.now() });
           setMeshStatus((current) => ({ ...current, detail: "Packet queued for the next available relay" }));
         },
-        onError: (error) => {
+        onError: (error, packet) => {
+          if (packet) {
+            void recordRelayEvent({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "failed", createdAt: Date.now(), detail: error.message });
+          }
           setMeshStatus({ kind: "mesh", state: "error", detail: error.message });
         },
       },
@@ -128,10 +135,42 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     };
   }, [identity]);
 
+  async function recordRelayEvent(record: RelayEventRecord): Promise<void> {
+    await relayEventStore.append(record);
+    setRelayEvents((current) => [...current.slice(-199), record]);
+  }
+
+  async function exportDiagnostics(): Promise<string> {
+    const [queue, outboxRecords, storedEvents] = await Promise.all([relayQueue.list(), outbox.list(), relayEventStore.list()]);
+    const eventCounts = storedEvents.reduce<Record<string, number>>((counts, event) => {
+      counts[event.kind] = (counts[event.kind] ?? 0) + 1;
+      return counts;
+    }, {});
+    return JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      appVersion: Constants.expoConfig?.version ?? "unknown",
+      platform: Platform.OS,
+      androidVersion: Platform.OS === "android" ? String(Platform.Version) : undefined,
+      meshStatus: meshStatus.state,
+      meshDetail: meshStatus.detail,
+      peerCount: peersRef.current.length,
+      verifiedPeerCount: peersRef.current.filter((peer) => peer.verified && peer.connectionState === "connected").length,
+      pendingConnectionCount: pendingNearbyRequests.length,
+      queuedPacketCount: queue.length,
+      outboxCount: outboxRecords.length,
+      relayEventCounts: eventCounts,
+      lastRelayEvents: storedEvents.slice(-20).map((event) => ({ kind: event.kind, createdAt: event.createdAt, detail: event.detail })),
+      containsAlertPlaintext: false,
+      containsPrivateKeys: false,
+    }, null, 2);
+  }
+
   useEffect(() => {
-    void Promise.all([loadMeshIdentity(), alertStore.list()]).then(([loadedIdentity, loadedAlerts]) => {
+    void Promise.all([loadMeshIdentity(), alertStore.list(), relayEventStore.list()]).then(([loadedIdentity, loadedAlerts, loadedRelayEvents]) => {
       setIdentity(loadedIdentity);
       setAlerts(loadedAlerts);
+      setRelayEvents(loadedRelayEvents);
     }).catch((error: unknown) => {
       setMeshStatus({ kind: "mesh", state: "error", detail: error instanceof Error ? error.message : "Unable to load SSA local state" });
     });
@@ -246,6 +285,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
   }
 
   async function handleDecryptedMessage(message: DecryptedMeshMessage, packet: MeshPacket): Promise<void> {
+    void recordRelayEvent({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: message.messageId, kind: "received", peerId: message.senderId, createdAt: Date.now(), detail: "Verified and decrypted on this device" });
     const alert = parseStructuredAlert(message.body) ?? undefined;
     const localMessage: LocalMessage = {
       id: message.messageId,
@@ -289,7 +329,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
         });
       }
     } catch (error) {
-      await relayEventStore.append({ eventId: createId("relay-event"), packetId: originalPacket.packetId, messageId: originalPacket.messageId, kind: "failed", createdAt: Date.now(), detail: error instanceof Error ? error.message : "Unable to create acknowledgement" });
+      await recordRelayEvent({ eventId: createId("relay-event"), packetId: originalPacket.packetId, messageId: originalPacket.messageId, kind: "failed", createdAt: Date.now(), detail: error instanceof Error ? error.message : "Unable to create acknowledgement" });
     }
   }
 
@@ -311,7 +351,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
         setAlerts((current) => current.map((record) => record.messageId === updatedAlert.messageId ? updatedAlert : record));
       }
     }
-    await relayEventStore.append({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "delivered", peerId: packet.senderId, createdAt: Date.now(), detail: "Authenticated recipient acknowledgement" });
+    await recordRelayEvent({ eventId: createId("relay-event"), packetId: packet.packetId, messageId: packet.messageId, kind: "delivered", peerId: packet.senderId, createdAt: Date.now(), detail: "Authenticated recipient acknowledgement" });
   }
 
   async function sendPacketToPeer(peer: MeshPeer, packet: MeshPacket): Promise<void> {
@@ -486,7 +526,7 @@ export function SanketlyProvider({ children }: PropsWithChildren) {
     if (enabled) await requestSsaNotificationPermission(languageRef.current).catch(() => false);
   }, []);
 
-  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert, notificationsEnabled, setNotificationsEnabled }), [identity, meshStatus, peers, pendingNearbyRequests, messages, alerts, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert, notificationsEnabled, setNotificationsEnabled]);
+  const value = useMemo(() => ({ peerId: identity?.peerId ?? null, meshStatus, peers, pendingNearbyRequests, messages, alerts, relayEvents, exportDiagnostics, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert, notificationsEnabled, setNotificationsEnabled }), [identity, meshStatus, peers, pendingNearbyRequests, messages, alerts, relayEvents, exportDiagnostics, startMesh, stopMesh, acceptNearbyRequest, rejectNearbyRequest, openBatterySettings, queueMessage, queueAlert, notificationsEnabled, setNotificationsEnabled]);
   return <SanketlyContext.Provider value={value}>{children}</SanketlyContext.Provider>;
 }
 

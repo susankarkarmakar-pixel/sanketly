@@ -7,7 +7,7 @@ export { readinessCopy } from "./readiness-copy";
 export type ReadinessStatus = "checking" | "ready" | "needs-attention" | "blocked" | "not-required";
 
 export interface ReadinessCheck {
-  id: "nearby" | "notifications" | "native-module" | "verified-peer";
+  id: "nearby" | "bluetooth" | "wifi" | "notifications" | "native-module" | "verified-peer";
   status: ReadinessStatus;
   required: boolean;
   title: string;
@@ -51,14 +51,31 @@ export async function checkLocalReadiness(verifiedPeerCount = 0, transportReady 
     const permission = await Notifications.getPermissionsAsync();
     notificationGranted = permission.granted || permission.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
   }
+  const nativeReadiness = Platform.OS === "android" && NearbyNative.isAvailable
+    ? await NearbyNative.getReadiness()
+    : { bluetoothEnabled: Platform.OS !== "android", wifiEnabled: Platform.OS !== "android", permissionsGranted: nearbyGranted };
 
   const checks: ReadinessCheck[] = [
     {
       id: "nearby",
-      status: nearbyGranted ? "ready" : "blocked",
+      status: nativeReadiness.permissionsGranted ? "ready" : "blocked",
       required: true,
       title: "Nearby permissions",
-      detail: nearbyGranted ? "Bluetooth and nearby device access granted" : "Bluetooth or nearby device access is missing",
+      detail: nativeReadiness.permissionsGranted ? "Bluetooth and nearby device access granted" : "Bluetooth or nearby device access is missing",
+    },
+    {
+      id: "bluetooth",
+      status: Platform.OS === "android" ? (nativeReadiness.bluetoothEnabled ? "ready" : "blocked") : "not-required",
+      required: Platform.OS === "android",
+      title: "Bluetooth radio",
+      detail: Platform.OS !== "android" ? "Android Bluetooth check is not required on this platform" : nativeReadiness.bluetoothEnabled ? "Bluetooth is enabled" : "Turn on Bluetooth and check again",
+    },
+    {
+      id: "wifi",
+      status: Platform.OS === "android" ? (nativeReadiness.wifiEnabled ? "ready" : "blocked") : "not-required",
+      required: Platform.OS === "android",
+      title: "Wi-Fi radio",
+      detail: Platform.OS !== "android" ? "Android Wi-Fi check is not required on this platform" : nativeReadiness.wifiEnabled ? "Wi-Fi radio is enabled" : "Turn on Wi-Fi and check again",
     },
     {
       id: "native-module",
@@ -85,7 +102,7 @@ export async function checkLocalReadiness(verifiedPeerCount = 0, transportReady 
 
   return {
     checks,
-    criticalReady: nearbyGranted && (Platform.OS !== "android" || NearbyNative.isAvailable),
+    criticalReady: nativeReadiness.permissionsGranted && nativeReadiness.bluetoothEnabled && nativeReadiness.wifiEnabled && (Platform.OS !== "android" || NearbyNative.isAvailable),
     notificationReady: notificationGranted || Platform.OS === "web",
     checkedAt: now,
   };

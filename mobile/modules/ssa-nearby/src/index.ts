@@ -25,6 +25,7 @@ interface NativeNearbyModule {
   start(serviceId: string, localName: string): Promise<void>;
   stop(): Promise<void>;
   openBatterySettings(): Promise<void>;
+  getReadiness(): Promise<{ bluetoothEnabled: boolean; wifiEnabled: boolean; permissionsGranted: boolean }>;
   acceptConnection(endpointId: string): Promise<void>;
   rejectConnection(endpointId: string): Promise<void>;
   sendPayload(endpointId: string, bytes: number[]): Promise<void>;
@@ -58,6 +59,11 @@ export const NearbyNative = {
   async openBatterySettings(): Promise<void> {
     if (!nativeModule) throw new Error("SSA Nearby native module is not installed");
     await nativeModule.openBatterySettings();
+  },
+
+  async getReadiness(): Promise<{ bluetoothEnabled: boolean; wifiEnabled: boolean; permissionsGranted: boolean }> {
+    if (!nativeModule) return { bluetoothEnabled: false, wifiEnabled: false, permissionsGranted: false };
+    return nativeModule.getReadiness();
   },
 
   async acceptConnection(endpointId: string): Promise<void> {

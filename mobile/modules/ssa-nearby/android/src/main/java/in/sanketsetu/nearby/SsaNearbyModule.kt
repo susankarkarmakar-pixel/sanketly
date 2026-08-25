@@ -52,6 +52,10 @@ class SsaNearbyModule : Module() {
       val context = requireContext()
       context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+
+    AsyncFunction("getReadiness") {
+      SsaNearbyRuntime.getReadiness(requireContext())
+    }
   }
 
   private fun requireContext(): Context = requireNotNull(appContext.reactContext) { "React context unavailable" }

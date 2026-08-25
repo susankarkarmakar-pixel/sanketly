@@ -51,6 +51,18 @@ internal object SsaNearbyRuntime {
     eventSink = null
   }
 
+  fun getReadiness(context: Context): Map<String, Any> {
+    val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    val bluetoothEnabled = bluetoothManager?.adapter?.isEnabled == true
+    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+    val wifiEnabled = wifiManager?.isWifiEnabled == true
+    return mapOf(
+      "bluetoothEnabled" to bluetoothEnabled,
+      "wifiEnabled" to wifiEnabled,
+      "permissionsGranted" to hasRequiredPermissions(context),
+    )
+  }
+
   fun start(context: Context, serviceId: String, localName: String, requestForeground: Boolean) {
     require(serviceId.isNotBlank()) { "Nearby service ID is required" }
     require(localName.isNotBlank()) { "Nearby local name is required" }

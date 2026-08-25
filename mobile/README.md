@@ -40,6 +40,10 @@ The repository sandbox can validate TypeScript and protocol behavior, but it doe
 
 The fuller repository map and execution diagram are in [`../SSA_REACT_NATIVE_CODEBASE.md`](../SSA_REACT_NATIVE_CODEBASE.md). The dashboard wireframe specification is [`../SSA_DASHBOARD_WIREFRAME_SPEC.md`](../SSA_DASHBOARD_WIREFRAME_SPEC.md). The first-run readiness design is [`../SSA_FIRST_RUN_WIZARD_WIREFRAME_SPEC.md`](../SSA_FIRST_RUN_WIZARD_WIREFRAME_SPEC.md).
 
+The readiness model now distinguishes Nearby permissions, Bluetooth radio, Wi-Fi radio, native transport availability, notification permission, and verified-peer availability. Android radio and permission values come from the native Nearby runtime when the module is installed; no verified peer is treated as a startup failure because a phone can be ready to search before another phone is nearby.
+
+Volunteer mode now exposes a relay timeline containing received, forwarded, queued, failed, and recipient-evidence events. It also offers a diagnostics export containing app/device/transport counts and recent event categories without alert plaintext, private keys, or authentication secrets. This export is for pilot troubleshooting and is not proof of emergency delivery.
+
 ## Feature-by-feature Test Center
 
 Settings now exposes the functional first-run readiness wizard and **Feature Test Center**. The Test Center runs local self-tests for libsodium initialization, SSA packet framing, SecureStore identity loading, and readiness checks. It also provides a clearly labeled synthetic notification test and direct links to the readiness wizard, Nearby network screen, SOS composer, structured alert composer, and informational onboarding. Synthetic tests never create or transmit a real emergency alert.
