@@ -13,6 +13,11 @@ on:
         required: true
         default: "0.1.4"
         type: string
+      version_code:
+        description: "Monotonically increasing Android version code"
+        required: true
+        default: "3"
+        type: string
       retention_days:
         description: "How many days GitHub keeps the downloadable artifact"
         required: true
@@ -35,6 +40,7 @@ jobs:
       CI: "1"
       SSA_ANDROID_PACKAGE: ${{ inputs.android_package }}
       SSA_VERSION: ${{ inputs.app_version }}
+      SSA_VERSION_CODE: ${{ inputs.version_code }}
       ANDROID_PACKAGE: ${{ inputs.android_package }}
       SSA_VERSION_NAME: ${{ inputs.app_version }}
 
@@ -134,6 +140,7 @@ jobs:
             echo "ref=${GITHUB_REF_NAME}"
             echo "package=${{ inputs.android_package }}"
             echo "version=${{ inputs.app_version }}"
+            echo "versionCode=${{ inputs.version_code }}"
             echo "artifact=ssa-${{ inputs.app_version }}-pilot.apk"
             echo "note=Protected pilot-signed APK for supervised testing; not a production/Play release."
           } | tee ../artifacts/build-info.txt

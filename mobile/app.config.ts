@@ -23,7 +23,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: androidPackage,
-    versionCode: 2,
+    versionCode: Number(process.env.SSA_VERSION_CODE ?? "2"),
     permissions: [
       "BLUETOOTH_SCAN",
       "BLUETOOTH_ADVERTISE",

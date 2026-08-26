@@ -119,3 +119,16 @@ The repository now includes a manual workflow at `.github/workflows/build-ssa-ap
 This workflow produces a protected **pilot-signed** APK for supervised testing. It is still not a Play Store production release. GitHub artifact downloads require access to the repository, and artifacts expire according to the retention value selected when the workflow is run.
 
 The workflow expects four encrypted repository secrets: `SSA_PILOT_KEYSTORE_BASE64`, `SSA_PILOT_KEYSTORE_PASSWORD`, `SSA_PILOT_KEY_PASSWORD`, and `SSA_PILOT_KEY_ALIAS`. The keystore is decoded only inside the ephemeral GitHub runner, used to sign the release APK, and deleted during cleanup. The private keystore and passwords must never be committed to the repository or printed in workflow logs. Once the same pilot keystore signs subsequent builds, Android can recognize them as updates to the same pilot package. Keep this key separate from the future production/Play App Signing key; losing or rotating it without an Android signing migration will prevent in-place updates and may require uninstalling the old pilot app, which removes local app data.
+
+
+### One-time pilot signing setup
+
+The repository includes `scripts/configure-pilot-signing-secrets.sh`. Run it from a trusted computer after authenticating GitHub CLI with permission to manage Actions secrets:
+
+```bash
+bash scripts/configure-pilot-signing-secrets.sh susankarkarmakar-pixel/sanketly
+```
+
+The helper creates a new pilot-only JKS keystore in a temporary directory, generates random passwords, uploads four encrypted repository secrets, and removes the temporary files. The signing key is intentionally not printed or committed. The currently connected automation token has repository push access but only `secrets: read` permission, so it cannot upload these secrets on your behalf; running the helper with your own GitHub login or a fine-grained token that has repository Actions-secrets write permission is required. If the helper reports a 403 on the public-key endpoint, update the token permission rather than placing the keystore or passwords in the repository.
+
+For every subsequent build, increase the workflow’s **Monotonically increasing Android version code**. Keep the package `in.sanketsetu.alert.pilot` unchanged so Android recognizes the signed APK as an update.
