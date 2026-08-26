@@ -11,7 +11,7 @@ on:
       app_version:
         description: "SSA version shown in the APK"
         required: true
-        default: "0.1.3"
+        default: "0.1.4"
         type: string
       retention_days:
         description: "How many days GitHub keeps the downloadable artifact"
@@ -87,8 +87,31 @@ jobs:
         working-directory: mobile
         run: pnpm exec expo prebuild --clean --non-interactive
 
+      - name: Configure protected pilot signing
+        working-directory: mobile
+        env:
+          SSA_PILOT_KEYSTORE_BASE64: ${{ secrets.SSA_PILOT_KEYSTORE_BASE64 }}
+          SSA_PILOT_KEYSTORE_PASSWORD: ${{ secrets.SSA_PILOT_KEYSTORE_PASSWORD }}
+          SSA_PILOT_KEY_PASSWORD: ${{ secrets.SSA_PILOT_KEY_PASSWORD }}
+          SSA_PILOT_KEY_ALIAS: ${{ secrets.SSA_PILOT_KEY_ALIAS }}
+          SSA_PILOT_KEYSTORE_FILE: ssa-pilot.keystore
+        run: |
+          set -euo pipefail
+          test -n "$SSA_PILOT_KEYSTORE_BASE64"
+          test -n "$SSA_PILOT_KEYSTORE_PASSWORD"
+          test -n "$SSA_PILOT_KEY_PASSWORD"
+          test -n "$SSA_PILOT_KEY_ALIAS"
+          printf '%s' "$SSA_PILOT_KEYSTORE_BASE64" | base64 --decode > android/app/ssa-pilot.keystore
+          chmod 600 android/app/ssa-pilot.keystore
+          node ../scripts/patch-pilot-signing.mjs android/app/build.gradle
+
       - name: Build release APK
         working-directory: mobile
+        env:
+          SSA_PILOT_KEYSTORE_PASSWORD: ${{ secrets.SSA_PILOT_KEYSTORE_PASSWORD }}
+          SSA_PILOT_KEY_PASSWORD: ${{ secrets.SSA_PILOT_KEY_PASSWORD }}
+          SSA_PILOT_KEY_ALIAS: ${{ secrets.SSA_PILOT_KEY_ALIAS }}
+          SSA_PILOT_KEYSTORE_FILE: ssa-pilot.keystore
         run: |
           chmod +x android/gradlew
           ./android/gradlew -p android assembleRelease --no-daemon --stacktrace
@@ -112,7 +135,7 @@ jobs:
             echo "package=${{ inputs.android_package }}"
             echo "version=${{ inputs.app_version }}"
             echo "artifact=ssa-${{ inputs.app_version }}-pilot.apk"
-            echo "note=Development/test-signed pilot APK; not a production release."
+            echo "note=Protected pilot-signed APK for supervised testing; not a production/Play release."
           } | tee ../artifacts/build-info.txt
 
       - name: Upload downloadable APK artifact
